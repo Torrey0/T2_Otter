@@ -23,7 +23,7 @@
 module BRANCH_COND_GEN(
     input [31:0] rs1,
     input [31:0] rs2,
-    input [2:0] ir12,
+    input [14:12] ir12,
     input [6:0] ir0,
     output logic [2:0] pcSource
     /*

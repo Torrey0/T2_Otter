@@ -32,15 +32,16 @@ module srcB_mux(
     always_comb begin
         case(alu_srcB)
             3'b000:
-                srcB = rs2;
+                srcB=rs2;
             3'b001:
-                srcB = I_Type;
+                srcB=I_Type;
             3'b010:
-                srcB = S_Type;
-            3'b011:
-                srcB = PC;
+                srcB=S_Type;
+            //3'b011:
             default:
-                srcB = PC;
+                srcB=PC;
+            //default:
+            //    srcB=csr_RD;
         endcase
     end
 endmodule

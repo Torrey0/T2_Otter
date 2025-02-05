@@ -16,7 +16,7 @@
 
 module OTTER_Wrapper(
    input CLK,
-   input BTNL,
+   //input BTNL,    //used for interrupts
    input BTNC,
    input [15:0] SWITCHES,
    output logic [15:0] LEDS,
@@ -43,10 +43,10 @@ module OTTER_Wrapper(
    
    // Registers for buffering outputs  /////////////////////////////////////
    logic [15:0] r_SSEG;
-    logic DB_BTN;
-    debounce_one_shot btnDB (.CLK(CLK), .BTN(BTNL), .DB_BTN(DB_BTN));
+    //logic DB_BTN; //used for interrupts
+    //debounce_one_shot btnDB (.CLK(CLK), .BTN(BTNL), .DB_BTN(DB_BTN)); //used for interrupts
    // Declare OTTER_CPU ////////////////////////////////////////////////////
-   OTTER_MCU CPU (.CPU_RST(s_reset), .CPU_INTR(DB_BTN), .CPU_CLK(clk_50),
+   OTTER_MCU333 CPU (.CPU_RST(s_reset), .CPU_CLK(clk_50),    //removed .CPU_INTR(DB_BTN),  since not currently supporting interrupts
                   .CPU_IOBUS_OUT(IOBUS_out), .CPU_IOBUS_IN(IOBUS_in),
                   .CPU_IOBUS_ADDR(IOBUS_addr), .CPU_IOBUS_WR(IOBUS_wr));
 

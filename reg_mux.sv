@@ -23,7 +23,7 @@
 module reg_mux(
     input [1:0] rf_wr_sel,
     input [31:0] PC_Plus_Four,
-    input [31:0] csr_RD,
+    //input [31:0] csr_RD,
     input [31:0] DOUT2,
     input [31:0] alu_res,
     output logic [31:0] wd
@@ -32,8 +32,8 @@ module reg_mux(
         case(rf_wr_sel)
             2'b00:
                 wd=PC_Plus_Four;
-            2'b01:
-                wd=csr_RD;
+            //2'b01:
+            //    wd=csr_RD;
             2'b10:
                 wd=DOUT2;
             default:

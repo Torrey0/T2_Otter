@@ -57,7 +57,7 @@ always_comb begin
         rs2=ram[adr2];
 end
 
-always_ff @(posedge clk) begin
+always_ff @(negedge clk) begin  //modified to write on negedge clock. This is the only time a negedge is used. We want to finish writing before the next instruction needs this
     if(en) 
        ram[w_adr]<=w_data; 
 end
