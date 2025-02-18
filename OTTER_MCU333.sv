@@ -40,9 +40,13 @@ module OTTER_MCU333(
     output [31:0] CPU_IOBUS_ADDR,
     output CPU_IOBUS_WR
     ); 
-    logic notStall; //assigned in code for forwarding Unit, controls PCWrite, and pipeline register progression
-
     
+    logic notStall; //assigned in code for forwarding Unit, controls PCWrite, and pipeline register progression
+    logic branchTaken;  //will make the instruction that got pulled from Mem on the cc interpreted as a no-op
+    logic branchTakenPropogated;    //propogate branch taken to the next loaded instruction so that it can be interpreted as a no-op
+    always_ff @(posedge CPU_CLK) begin
+        branchTakenPropogated <= branchTaken;
+    end
     //Instruction Fetch
     //local fetch logic:
     logic [31:0] DOUT1, PC; //wires for registers
@@ -58,13 +62,22 @@ module OTTER_MCU333(
     assign PCPlusFour=PC+4;
     PC_DIN_MUX PCMUX(.SEL(pcSource), .JALR(jalr), .BRANCH(branch), .JAL(jal), .PLUS_FOUR(PCPlusFour), .PC_DIN(PC_DIN));
     PC pc(.PC_DIN(PC_DIN), .PC_RST(CPU_RST), .PC_WE(PCWrite), .CLK(CPU_CLK), .PC_COUNT(PC));
+    
    //pipeline registers. these are the registers the decode part of computer needs to read on the next cycle
     logic [31:0] deReg_IR, deReg_PC;
     //
-    assign deReg_IR = DOUT1;   //written with assign since DOUT1 is computed on posedge (in not combinational)
+//    assign deReg_IR = DOUT1;   //written with assign since DOUT1 is computed on posedge (in not combinational)
+    
+    always_comb begin
+        if(branchTaken || branchTakenPropogated) begin   //perform nop if branch taken
+            deReg_IR=8'h00000013;   //nop instruction
+        end else begin
+            deReg_IR=DOUT1;
+        end
+    end
     always_ff @(posedge CPU_CLK) begin
         //deReg_IR <= DOUT1;  //set by mem file
-        if (notStall) begin
+        if  (notStall && !branchTaken) begin
             deReg_PC<=PC;
         end
      end
@@ -126,7 +139,7 @@ module OTTER_MCU333(
     logic [2:0] exReg_fun3;
     logic [4:0] exReg_rs1Addr;  //needed for hazard detection
     logic [4:0] exReg_rs2Addr;
-    logic [31:0] exReg_rs1, exReg_rs2;  //new ones
+    //logic [31:0] exReg_rs1, exReg_rs2;  //new ones
     logic [31:0] exReg_ALUinpA, exReg_ALUinpB;
     logic exReg_regWrite, exReg_memWrite, exReg_memRead2;
     logic [3:0] exReg_aluFun;
@@ -138,7 +151,15 @@ module OTTER_MCU333(
     //
     
     always_ff @(posedge CPU_CLK) begin
-        if (notStall) begin
+//        if (branchTaken) begin
+//            exReg_regWrite <=0; //make this instruction a no-op instruction
+//            exReg_memWrite <=0;
+//            exReg_opcode <=7'b0010011;  
+//            exReg_wa=0; //set to write to 0 so no accidental forwarding
+//            exReg_rs1Addr=0;
+//            exReg_rs2Addr=0;
+//        end else
+         if (notStall) begin
             exReg_opcode <= deReg_IR[6:0];  //transfer previous pipeline values, trimming IR
             exReg_wa <= deReg_IR[11:7];
             exReg_fun3 <= deReg_IR[14:12];
@@ -151,8 +172,8 @@ module OTTER_MCU333(
             exReg_rf_wr_sel <= rf_wr_sel;
             exReg_PC <= deReg_PC;
             //new pipeline
-            exReg_rs1 <= rs1;   //register values
-            exReg_rs2 <= rs2;
+//            exReg_rs1 <= rs1;   //register values
+//            exReg_rs2 <= rs2;
             exReg_ALUinpA <= srcA;  //ALU inputs
             exReg_ALUinpB <= srcB;
             exReg_aluFun <= alu_fun;
@@ -165,17 +186,21 @@ module OTTER_MCU333(
 //            exReg_memWrite <= 1'b0;
             exReg_memRead2 <= memRead2;
         end
+        
 
     end
     
    
     //Instruction Execute
     logic [31:0] aluRes;
-    BRANCH_COND_GEN bcd(.rs1(exReg_rs1), .rs2(exReg_rs2), .pcSource(pcSource), .ir12(exReg_fun3), .ir0(exReg_opcode));    //PCSource =SEL for pcMux above
-    BRANCH_ADDR_GEN bad(.J_TYPE_IMM(exReg_J_Type), .B_TYPE_IMM(exReg_B_Type), .I_TYPE_IMM(exReg_I_Type), .rs1(exReg_rs1), .PC(exReg_PC), .branch(branch), .jal(jal), .jalr(jalr));  //these outputs used in PC Mux above
-    
     //F_ is a value forwarded from dataForwarding Unit
     logic [31:0] F_rs1, F_rs2ALU, F_rs2Mem; 
+//    BRANCH_COND_GEN bcd(.rs1(exReg_rs1), .rs2(exReg_rs2), .pcSource(pcSource), .branchTaken(branchTaken), .ir12(exReg_fun3), .ir0(exReg_opcode));    //PCSource =SEL for pcMux above
+//    BRANCH_ADDR_GEN bad(.J_TYPE_IMM(exReg_J_Type), .B_TYPE_IMM(exReg_B_Type), .I_TYPE_IMM(exReg_I_Type), .rs1(exReg_rs1), .PC(exReg_PC), .branch(branch), .jal(jal), .jalr(jalr));  //these outputs used in PC Mux above
+    BRANCH_COND_GEN bcd(.rs1(F_rs1), .rs2(F_rs2ALU), .pcSource(pcSource), .branchTaken(branchTaken), .ir12(exReg_fun3), .ir0(exReg_opcode));    //PCSource =SEL for pcMux above
+    BRANCH_ADDR_GEN bad(.J_TYPE_IMM(exReg_J_Type), .B_TYPE_IMM(exReg_B_Type), .I_TYPE_IMM(exReg_I_Type), .rs1(F_rs1), .PC(exReg_PC), .branch(branch), .jal(jal), .jalr(jalr));  //these outputs used in PC Mux above
+    
+
     ALU MathYay(.srcA(F_rs1), .srcB(F_rs2ALU), .alu_fun(exReg_aluFun), .alu_result(aluRes));
 
     //pipeline registers:
@@ -207,9 +232,9 @@ module OTTER_MCU333(
     
     
     //Instruction Memory:
-    //not currently assigning or using memBusy1 or memBusy2 (which are present on diagram, and will be used for read after load hazards)
+    //not currently assigning or using memBusy1 or memBusy2 (which are present on diagram, and will be used for read after load hazards) 
     assign CPU_IOBUS_ADDR = memReg_aluRes;  //IO outputs
-    assign CPU_IOBUS_OUT = memReg_rs2;
+    assign CPU_IOBUS_OUT = F_rs2Mem;    //i think?
     
     logic [31:0] DOUT2;
     logic memRDEN1;
