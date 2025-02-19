@@ -77,7 +77,7 @@ module OTTER_MCU333(
     end
     always_ff @(posedge CPU_CLK) begin
         //deReg_IR <= DOUT1;  //set by mem file
-        if  (notStall && !branchTaken) begin
+        if  (notStall && !branchTaken) begin        //check that IR is also being delayed!
             deReg_PC<=PC;
         end
      end
@@ -207,7 +207,7 @@ module OTTER_MCU333(
     logic [31:0] memReg_aluRes; //new pipeline values
     logic [31:0] memReg_PC; //previous pipeline values
     logic [31:0] memReg_rs2; 
-    logic memReg_regWrite, memReg_memWrite, memReg_memRead2;
+    logic memReg_regWrite, memReg_memWrite, memReg_memRead2;    
     logic [1:0] memReg_rf_wr_sel;
     logic [2:0] memReg_fun3; //trimming IR_Reg, no longer need the entire instruction
     logic [4:0] memReg_wa;
@@ -242,17 +242,18 @@ module OTTER_MCU333(
     
     logic [2:0] wbReg_fun3; //needed by mem for combinational logic resolving output Dout2 (since this effectively happens in WB stage
     logic [31:0] wbReg_aluRes;
+    logic wbReg_memRead2;
     //computing DOUT2 is combinational, so needs a pipeline register as a buffer before entering regMux
     //computing DOUT1 is always_ff, so needs to be directly mapped into decoder, regfile, and immediate gen
-    
-    Memory mem(.MEM_CLK(CPU_CLK), .MEM_RDEN1(memRDEN1), .MEM_RDEN2(memReg_memRead2), .MEM_WE2(memReg_memWrite), .MEM_ADDR1(PC[15:2]), .MEM_ADDR2(memReg_aluRes), .MEM_ADDR2LD(wbReg_aluRes), .MEM_DIN2(memReg_rs2), .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZELD(wbReg_fun3[1:0]), .MEM_SIGN(memReg_fun3[2:2]), .MEM_SIGNLD(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1), .MEM_DOUT2(DOUT2));
+                                                         //actual reading happens on wb                                                 //danger below (changed to wb write to mem), effectively doing all mem actions on same cycle 
+    Memory mem(.MEM_CLK(CPU_CLK), .MEM_RDEN1(notStall), .MEM_RDEN2(wbReg_memRead2), .MEM_WE2(memReg_memWrite), .MEM_ADDR1(PC[15:2]), .MEM_ADDR2(memReg_aluRes), .MEM_ADDR2Parse(wbReg_aluRes), .MEM_DIN2(memReg_rs2), .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGN(memReg_fun3[2:2]), .MEM_SIGNParse(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1), .MEM_DOUT2(DOUT2));
 
     //pipeline registers
     //logic [31:0] wbReg_DOUT2;   //new pipeline value
     //logic [31:0] wbReg_aluRes; //previous pipeline values
     logic [31:0] wbReg_PC; 
     logic [1:0] wbReg_rf_wr_sel;
-    
+
 
     
     //wbReg_regWrite, and wbReg_wa declared in decode since they both enter regFile
@@ -267,7 +268,7 @@ module OTTER_MCU333(
         wbReg_wa <= memReg_wa;
         wbReg_aluRes <=memReg_aluRes;
         wbReg_fun3 <= memReg_fun3;
-
+        wbReg_memRead2 <=memReg_memRead2;
     end
     //instruction WB:
     //local
