@@ -245,8 +245,9 @@ module OTTER_MCU333(
     logic wbReg_memRead2;
     //computing DOUT2 is combinational, so needs a pipeline register as a buffer before entering regMux
     //computing DOUT1 is always_ff, so needs to be directly mapped into decoder, regfile, and immediate gen
-                                                         //actual reading happens on wb                                                 //danger below (changed to wb write to mem), effectively doing all mem actions on same cycle 
-    Memory mem(.MEM_CLK(CPU_CLK), .MEM_RDEN1(notStall), .MEM_RDEN2(wbReg_memRead2), .MEM_WE2(memReg_memWrite), .MEM_ADDR1(PC[15:2]), .MEM_ADDR2(memReg_aluRes), .MEM_ADDR2Parse(wbReg_aluRes), .MEM_DIN2(memReg_rs2), .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGN(memReg_fun3[2:2]), .MEM_SIGNParse(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1), .MEM_DOUT2(DOUT2));
+                                                        //stack of questionable changes: mapped MEMRDEN2 on mem instead of wb phase. in mem module reading memory[memAddr2Parse] instead of memory[memAddr2]
+                                                         //actual reading happens on wb, testing on mem                               //danger below (changed to wb write to mem), effectively doing all mem actions on same cycle 
+    Memory mem(.MEM_CLK(CPU_CLK), .MEM_RDEN1(notStall), .MEM_RDEN2(memReg_memRead2), .MEM_WE2(memReg_memWrite), .MEM_ADDR1(PC[15:2]), .MEM_ADDR2(memReg_aluRes), .MEM_ADDR2Parse(wbReg_aluRes), .MEM_DIN2(memReg_rs2), .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGN(memReg_fun3[2:2]), .MEM_SIGNParse(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1), .MEM_DOUT2(DOUT2));
 
     //pipeline registers
     //logic [31:0] wbReg_DOUT2;   //new pipeline value
