@@ -1,0 +1,22 @@
+.data 
+inpA: .word 4
+.text
+#la x8, inpA
+auipc x8, 1
+addi x7, zero, 7
+
+#addi  x8,zero, 6000 #(change this address to a Data memory address in your Otter)
+
+addi  x10,zero,10
+
+nop
+
+nop
+
+or x11,x7,x10
+
+nop
+
+nop
+
+sw x11,0(x8)

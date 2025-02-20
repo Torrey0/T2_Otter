@@ -25,7 +25,8 @@ module BRANCH_COND_GEN(
     input [31:0] rs2,
     input [14:12] ir12,
     input [6:0] ir0,
-    output logic [2:0] pcSource
+    output logic [2:0] pcSource,
+    output logic branchTaken
     /*
     output br_eq,
     output br_lt,
@@ -38,6 +39,7 @@ module BRANCH_COND_GEN(
         
         always_comb begin
         pcSource = 0;
+        branchTaken=1;
         case (ir0)
             7'b1100111: begin   //third (of 3) opcodes for I-Type, specifically identifies jalr
                 pcSource = 1; //select jalr  
@@ -48,12 +50,18 @@ module BRANCH_COND_GEN(
                 pcSource=2; //select branch only if the condition is true
                 case(ir12[14:13])
                     //3rd bit of ir12
-                    2'b00:   //br_eq and bne  
+                    2'b00: begin   //br_eq and bne  
                         pcSource[1]=br_eq^ir12[12];
-                    2'b10:  //br_lt and bge
-                        pcSource[1]=br_lt^ir12[12];
-                    default:    //fpr bltu and bgeu: 11.
+                        branchTaken=br_eq^ir12[12];
+                    end
+                    2'b10: begin  //br_lt and bge
+                        pcSource[1]=br_lt^ir12[12]; 
+                        branchTaken=br_lt^ir12[12];
+                    end
+                    default: begin    //fpr bltu and bgeu: 11.
                         pcSource[1]=br_ltu^ir12[12];
+                        branchTaken=br_ltu^ir12[12];
+                    end
                  endcase
              end
             
@@ -63,6 +71,7 @@ module BRANCH_COND_GEN(
             
             default: begin
                 pcSource = 0; //default to pc+4
+                branchTaken=0;
             end 
             
         endcase

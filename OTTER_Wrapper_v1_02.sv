@@ -54,7 +54,6 @@ module OTTER_Wrapper(
    SevSegDisp SSG_DISP (.DATA_IN(r_SSEG), .CLK(CLK), .MODE(1'b0),
                        .CATHODES(CATHODES), .ANODES(ANODES));
    
-                           
    // Clock Divider to create 50 MHz Clock //////////////////////////////////
    always_ff @(posedge CLK) begin
        clk_50 <= ~clk_50;
@@ -74,7 +73,7 @@ module OTTER_Wrapper(
    
    
    // Connect Board output peripherals (Memory Mapped IO devices) to IOBUS
-    always_ff @ (posedge clk_50) begin
+    always_ff @ (posedge clk_50) begin  //is actually written to IO on WB phase. this makes sense? :)
         if(IOBUS_wr)
             case(IOBUS_addr)
                 LEDS_AD: LEDS   <= IOBUS_out[15:0];

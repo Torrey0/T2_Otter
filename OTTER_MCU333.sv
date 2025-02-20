@@ -234,7 +234,8 @@ module OTTER_MCU333(
     //Instruction Memory:
     //not currently assigning or using memBusy1 or memBusy2 (which are present on diagram, and will be used for read after load hazards) 
     assign CPU_IOBUS_ADDR = memReg_aluRes;  //IO outputs
-    assign CPU_IOBUS_OUT = F_rs2Mem;    //i think?
+    logic [31:0] F_rs2WB; //for iobusout only, j testing
+    assign CPU_IOBUS_OUT = F_rs2WB;    //
     
     logic [31:0] DOUT2;
     logic memRDEN1;
@@ -270,6 +271,8 @@ module OTTER_MCU333(
         wbReg_aluRes <=memReg_aluRes;
         wbReg_fun3 <= memReg_fun3;
         wbReg_memRead2 <=memReg_memRead2;
+        F_rs2WB <= F_rs2Mem;
+        
     end
     //instruction WB:
     //local
