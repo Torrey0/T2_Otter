@@ -56,8 +56,7 @@ module OTTER_MCU333(
     logic [31:0] jalr, branch, jal;  //set by branch address generator
     logic [2:0] pcSource;       //set by branch cond gen
     logic PCWrite;  //will be set by hazard control, for now set always true
-    
-
+   
     assign PCWrite=notStall;
     assign PCPlusFour=PC+4;
     PC_DIN_MUX PCMUX(.SEL(pcSource), .JALR(jalr), .BRANCH(branch), .JAL(jal), .PLUS_FOUR(PCPlusFour), .PC_DIN(PC_DIN));
@@ -66,7 +65,6 @@ module OTTER_MCU333(
    //pipeline registers. these are the registers the decode part of computer needs to read on the next cycle
     logic [31:0] deReg_IR, deReg_PC;
     //
-//    assign deReg_IR = DOUT1;   //written with assign since DOUT1 is computed on posedge (in not combinational)
     
     always_comb begin
         if(branchTaken || branchTakenPropogated) begin   //perform nop if branch taken
@@ -77,7 +75,7 @@ module OTTER_MCU333(
     end
     always_ff @(posedge CPU_CLK) begin
         //deReg_IR <= DOUT1;  //set by mem file
-        if  (notStall && !branchTaken) begin        //check that IR is also being delayed!
+        if  (notStall) begin        //only need to prevent PC propogation on data hazard stall. on branchTaken we run a nop, which doesnt use PC anywar
             deReg_PC<=PC;
         end
      end
@@ -104,30 +102,21 @@ module OTTER_MCU333(
     logic wbReg_regWrite;   //from wb state
     logic [4:0] wbReg_wa;
     
-
-    //Instruction Decode
-    //assign deReg_rs1Addr=ifReg_IR[19:15];
-    //assign deReg_rs2Addr=ifReg_IR[24:20];
-    //assign deReg_rdAddr=ifReg_IR[11:7];
-    
-    //assign deReg_fun3=ifReg_IR[14:12];
-    //assign deReg_pcPlus4=ifReg_PC4;
-    
+    //need to know where and if rs1 and rs2 are used for forwarding and hazard detection
     assign opcode = opcode_t'(deReg_IR[6:0]);
-   
-   // rs1 and rs2 used are not yet needed since no forwarding, will be used in future
-    assign rs1_used=    deReg_IR[19:15] != 0
+    assign rs1_used=    deReg_IR[19:15] != 0        //if rs1 is used at all
                                 && opcode != LUI
                                 && opcode != AUIPC
                                 && opcode != JAL;
-    assign rs2_used=   deReg_IR[24:20] !=0 && (opcode==OP || opcode==STORE || opcode==BRANCH);
-    assign rs1Selected=muxASel==2'b00;
-    assign rs2Selected=muxBSel==3'b000;
+    assign rs2_used=   deReg_IR[24:20] !=0 && (opcode==OP || opcode==STORE || opcode==BRANCH);  //if rs2 is used at all
+    assign rs1Selected=muxASel==2'b00;  //if rs1 is used by the ALU
+    assign rs2Selected=muxBSel==3'b000; //if rs2 is used by the ALU
+    //
+    
     CU_DCDR decoder(.ir0(deReg_IR[6:0]), .ir12(deReg_IR[14:12]), .ir30(deReg_IR[30]), .alu_fun(alu_fun), .alu_srcA(muxASel), .alu_srcB(muxBSel), .rf_wr_sel(rf_wr_sel), .regWrite(regWrite), .memWrite(memWrite), .memRead2(memRead2));
-
+    IMMED_GEN immy(.Instruction(deReg_IR[31:7]), .U_TYPE(U_Type), .I_TYPE(I_Type), .S_TYPE(S_Type), .J_TYPE(J_Type), .B_TYPE(B_Type));
     
     RegFile regFile(.clk(CPU_CLK), .en(wbReg_regWrite), .adr1(deReg_IR[19:15]), .adr2(deReg_IR[24:20]), .w_adr(wbReg_wa), .w_data(wd), .rs1(rs1),.rs2(rs2));
-    IMMED_GEN immy(.Instruction(deReg_IR[31:7]), .U_TYPE(U_Type), .I_TYPE(I_Type), .S_TYPE(S_Type), .J_TYPE(J_Type), .B_TYPE(B_Type));
     
     srcA_mux muxA(.alu_srcA(muxASel), .rs1(rs1), .U_Type(U_Type), .srcA(srcA));
     srcB_mux muxB(.alu_srcB(muxBSel), .rs2(rs2), .I_Type(I_Type), .S_Type(S_Type), .PC(deReg_PC), .srcB(srcB));
@@ -139,7 +128,6 @@ module OTTER_MCU333(
     logic [2:0] exReg_fun3;
     logic [4:0] exReg_rs1Addr;  //needed for hazard detection
     logic [4:0] exReg_rs2Addr;
-    //logic [31:0] exReg_rs1, exReg_rs2;  //new ones
     logic [31:0] exReg_ALUinpA, exReg_ALUinpB;
     logic exReg_regWrite, exReg_memWrite, exReg_memRead2;
     logic [3:0] exReg_aluFun;
@@ -151,14 +139,6 @@ module OTTER_MCU333(
     //
     
     always_ff @(posedge CPU_CLK) begin
-//        if (branchTaken) begin
-//            exReg_regWrite <=0; //make this instruction a no-op instruction
-//            exReg_memWrite <=0;
-//            exReg_opcode <=7'b0010011;  
-//            exReg_wa=0; //set to write to 0 so no accidental forwarding
-//            exReg_rs1Addr=0;
-//            exReg_rs2Addr=0;
-//        end else
          if (notStall) begin
             exReg_opcode <= deReg_IR[6:0];  //transfer previous pipeline values, trimming IR
             exReg_wa <= deReg_IR[11:7];
@@ -171,9 +151,6 @@ module OTTER_MCU333(
             exReg_rs2_used <=rs2_used;
             exReg_rf_wr_sel <= rf_wr_sel;
             exReg_PC <= deReg_PC;
-            //new pipeline
-//            exReg_rs1 <= rs1;   //register values
-//            exReg_rs2 <= rs2;
             exReg_ALUinpA <= srcA;  //ALU inputs
             exReg_ALUinpB <= srcB;
             exReg_aluFun <= alu_fun;
@@ -182,8 +159,6 @@ module OTTER_MCU333(
             exReg_I_Type <= I_Type;
             exReg_regWrite <= regWrite; //other control decoder outputs
             exReg_memWrite <= memWrite;
-//            exReg_regWrite <= 1'b0; 
-//            exReg_memWrite <= 1'b0;
             exReg_memRead2 <= memRead2;
         end
         
@@ -193,14 +168,11 @@ module OTTER_MCU333(
    
     //Instruction Execute
     logic [31:0] aluRes;
-    //F_ is a value forwarded from dataForwarding Unit
-    logic [31:0] F_rs1, F_rs2ALU, F_rs2Mem; 
-//    BRANCH_COND_GEN bcd(.rs1(exReg_rs1), .rs2(exReg_rs2), .pcSource(pcSource), .branchTaken(branchTaken), .ir12(exReg_fun3), .ir0(exReg_opcode));    //PCSource =SEL for pcMux above
-//    BRANCH_ADDR_GEN bad(.J_TYPE_IMM(exReg_J_Type), .B_TYPE_IMM(exReg_B_Type), .I_TYPE_IMM(exReg_I_Type), .rs1(exReg_rs1), .PC(exReg_PC), .branch(branch), .jal(jal), .jalr(jalr));  //these outputs used in PC Mux above
+    logic [31:0] F_rs1, F_rs2ALU, F_rs2Mem;     //F_ is a value forwarded from dataForwarding Unit
+    //all combinational:
     BRANCH_COND_GEN bcd(.rs1(F_rs1), .rs2(F_rs2ALU), .pcSource(pcSource), .branchTaken(branchTaken), .ir12(exReg_fun3), .ir0(exReg_opcode));    //PCSource =SEL for pcMux above
     BRANCH_ADDR_GEN bad(.J_TYPE_IMM(exReg_J_Type), .B_TYPE_IMM(exReg_B_Type), .I_TYPE_IMM(exReg_I_Type), .rs1(F_rs1), .PC(exReg_PC), .branch(branch), .jal(jal), .jalr(jalr));  //these outputs used in PC Mux above
     
-
     ALU MathYay(.srcA(F_rs1), .srcB(F_rs2ALU), .alu_fun(exReg_aluFun), .alu_result(aluRes));
 
     //pipeline registers:
@@ -214,7 +186,6 @@ module OTTER_MCU333(
     
     always_ff@(posedge CPU_CLK) begin
             memReg_aluRes <= aluRes;    //new value
-//            memReg_opcode <=exReg_opcode;
             memReg_PC <= exReg_PC;  //previous values
             memReg_rs2 <= F_rs2Mem;    //forwarded value of rs2
             if (notStall) begin
@@ -232,38 +203,27 @@ module OTTER_MCU333(
     
     
     //Instruction Memory:
-    //not currently assigning or using memBusy1 or memBusy2 (which are present on diagram, and will be used for read after load hazards) 
+    //note: memory only supports writing to MMIO at the moment, since it is not necessary to read MMIO to test test_all, and doing so would require modyfing the wrapper, which we probably wont want to do until final lab if possible.
+    //not currently assigning or using memBusy1 or memBusy2 (which are present on the 233 diagram, and may need to be used to induce a stall, or when a stall is necessary when writing or reading MMIO
     assign CPU_IOBUS_ADDR = memReg_aluRes;  //IO outputs
-    logic [31:0] F_rs2WB; //for iobusout only, j testing
-    assign CPU_IOBUS_OUT = F_rs2WB;    //
+    logic [31:0] F_rs2WB; //Forwarded value of rs2 (needed by memory module), this is also the IO data output
+    assign CPU_IOBUS_OUT = F_rs2WB;    
     
-    logic [31:0] DOUT2;
-    logic memRDEN1;
-    assign memRDEN1=1;   //for now, assuming no hazards
-    
-    logic [2:0] wbReg_fun3; //needed by mem for combinational logic resolving output Dout2 (since this effectively happens in WB stage
+    logic [31:0] DOUT2; //output of the data memory
+    //the wbRegisters are used by the memory for parsing DOUT2. For example, the output of memory will need to be adjusted depending on signed/unsigned, lw, lh, lb.
+    logic [2:0] wbReg_fun3; 
     logic [31:0] wbReg_aluRes;
     logic wbReg_memRead2;
-    //computing DOUT2 is combinational, so needs a pipeline register as a buffer before entering regMux
-    //computing DOUT1 is always_ff, so needs to be directly mapped into decoder, regfile, and immediate gen
-                                                        //stack of questionable changes: mapped MEMRDEN2 on mem instead of wb phase. in mem module reading memory[memAddr2Parse] instead of memory[memAddr2]
-                                                         //actual reading happens on wb, testing on mem                               //danger below (changed to wb write to mem), effectively doing all mem actions on same cycle 
+    //computing DOUT1 and DOUT2 is always_ff, so needs to be directly mapped into wbReg,and co.
     Memory mem(.MEM_CLK(CPU_CLK), .MEM_RDEN1(notStall), .MEM_RDEN2(memReg_memRead2), .MEM_WE2(memReg_memWrite), .MEM_ADDR1(PC[15:2]), .MEM_ADDR2(memReg_aluRes), .MEM_ADDR2Parse(wbReg_aluRes), .MEM_DIN2(memReg_rs2), .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGN(memReg_fun3[2:2]), .MEM_SIGNParse(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1), .MEM_DOUT2(DOUT2));
 
-    //pipeline registers
-    //logic [31:0] wbReg_DOUT2;   //new pipeline value
-    //logic [31:0] wbReg_aluRes; //previous pipeline values
+    //ne wb registers
     logic [31:0] wbReg_PC; 
     logic [1:0] wbReg_rf_wr_sel;
-
 
     
     //wbReg_regWrite, and wbReg_wa declared in decode since they both enter regFile
     always_ff@(posedge CPU_CLK) begin
-        //wbReg_DOUT2 <= DOUT2;
-        //this continues during a stall
-//        wbReg_opcode <=memReg_opcode;
-        //wbReg_aluRes <= memReg_aluRes;
         wbReg_PC <= memReg_PC;
         wbReg_regWrite <= memReg_regWrite;
         wbReg_rf_wr_sel <= memReg_rf_wr_sel;
@@ -272,8 +232,8 @@ module OTTER_MCU333(
         wbReg_fun3 <= memReg_fun3;
         wbReg_memRead2 <=memReg_memRead2;
         F_rs2WB <= F_rs2Mem;
-        
     end
+    
     //instruction WB:
     //local
     logic [31:0] wbPCPlusFour;
@@ -303,17 +263,5 @@ module OTTER_MCU333(
     rs1Mux forwardMux1(.Ex_rs1(exReg_ALUinpA), .Mem_rs1(memReg_aluRes), .Wb_rs1(wbReg_aluRes), .DOUT2(DOUT2), .rs1Sel(F_Sel1), .rs1(F_rs1));
     rs2Mux forwardMux2ALU(.Ex_rs2(exReg_ALUinpB), .Mem_rs2(memReg_aluRes), .Wb_rs2(wbReg_aluRes), .DOUT2(DOUT2), .rs2Sel(F_Sel2ALU), .rs2(F_rs2ALU));
     rs2Mux forwardMux2Mem(.Ex_rs2(exReg_ALUinpB), .Mem_rs2(memReg_aluRes), .Wb_rs2(wbReg_aluRes), .DOUT2(DOUT2), .rs2Sel(F_Sel2), .rs2(F_rs2Mem));
-
-    //rs2MemMux forwardMem2
-    
-
-    
-    //what want:
-    //if rs2 availabe: (
-    //  memReg_rs2 = exReg_rs2
-    //if rs2 in processing:
-    //  memReg_rs2= ?
     
 endmodule
-
-

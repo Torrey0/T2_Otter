@@ -91,7 +91,7 @@
       if(MEM_RDEN2)
       //hard wire the read ioBuffer to 0? when trying to read
       //for sim, do 0
-       // ioBuffer <=0;   //for sim
+//        ioBuffer <=0;   //for sim
         //for hw do 4
         ioBuffer <=4;   //for hw
         
@@ -121,10 +121,6 @@
       // read all data synchronously required for BRAM
       if (MEM_RDEN1)                       // need EN for extra load cycle to not change instruction
         MEM_DOUT1 <= memory[MEM_ADDR1];
-    //MEMRDEN2 needs to be high during wb
-    //all else, MEM_RDEN2, and parsing from wb phase
-    //need MEM_ADDR2 (mem phase 1) to be at the appropriate value on the frame before MEM_RDEN2 goes high.
-    //all parsing stuff should be set at the same time MEM_RDEN2 is high (in sync with it).
       if (MEM_RDEN2)                       // Read word from memory
         memReadWord <= memory[wordAddr2];  //hmm
     end
@@ -157,6 +153,7 @@
     end
  
     // Memory Mapped IO
+    //temporarily commented out MMIO-related values for reading vs. writing. These may need to be re-implemented in the future.
     always_comb begin
       //if(MEM_ADDR2 >= 32'h00010000) begin  // maybe legit?
       if(MEM_ADDR2Parse >= 32'h00010000) begin  // external address range
