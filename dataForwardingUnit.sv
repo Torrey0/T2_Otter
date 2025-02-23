@@ -27,11 +27,8 @@ module dataForwardingUnit(
     input [4:0] Ex_rs2Addr,
     input Wb_regWrite,
     input Mem_regWrite,
-//    input [6:0] opcode, //need to detect load instructions on ir0=0b0000011
     input Ex_rs1_used, Ex_rs2_used,    //from ex register, the instruction to which we are forwarding for one above
     input rs1Selected, 
-    //input rs2Selected, 
-//    input Mem_rs1_used, Mem_rs1_used,   //from mem register, the instruction to which we are forwarding for two above //we dont give it here... bruh
     input MEMloadInstr,    // from wb register, we only have the chance to meaningfully forward a loadInstr from wb
     input WBloadInstr,
     output logic [1:0] rs1SEL,  //0=nothing, 1=forward from ALU, 2=forward from Memory
@@ -39,22 +36,16 @@ module dataForwardingUnit(
     output logic notStall
     );
     
-      //logic loadInstr;
-      //logic storeInstr;
-//    assign loadInstr=opcode==7'b0000011;
-//    assign storInstr=opcode==7'b0100011;
     always_comb begin
         notStall=1;
         //forwarding rs1
         //if we get a load, should forward from memory, this relies on writes being stalled to be correct
-        //if (Mem_regWrite && (Mem_rdAddr!=5'b00000) && (Mem_rdAddr==Ex_rs1Addr)) begin  //EX hazard
         if (Mem_regWrite && (Ex_rs1_used) && rs1Selected&& (Mem_rdAddr==Ex_rs1Addr)) begin  //EX hazard
             rs1SEL=2'b10;   //forward ALU output (from Mem buffer)
             if(MEMloadInstr) begin //if we are trying to forward ALU out, but have a load instruction, we need to stall
                 notStall=0;
             end
         end
-//        else if (Wb_regWrite && (Wb_rdAddr!=0) && (Wb_rdAddr==Ex_rs1Addr)) begin
         else if (Wb_regWrite && (Ex_rs1_used) && rs1Selected && (Wb_rdAddr==Ex_rs1Addr)) begin
             rs1SEL[0]=1'b1;   //forward from WB buffer
             rs1SEL[1]=WBloadInstr;    //instead, forward directly from mem output
@@ -64,19 +55,13 @@ module dataForwardingUnit(
         end
         
         //forwarding rs2
-//        if (Mem_regWrite && (Mem_rdAddr!=5'b00000) && (Mem_rdAddr==Ex_rs2Addr)) begin  //EX hazard
-//         if (Mem_regWrite && (Ex_rs2_used) && rs2Selected && (Mem_rdAddr==Ex_rs2Addr)) begin  //EX hazard
          if (Mem_regWrite && (Ex_rs2_used) && Ex_rs2Addr!=0 && (Mem_rdAddr==Ex_rs2Addr)) begin  //EX hazard
-
             rs2SEL=2'b10;   //forward ALU output (from Mem buffer)
             if(MEMloadInstr) begin //if we are trying to forward ALU out, but have a load instruction, we need to stall
                 notStall=0;
             end
         end
-//        else if (Wb_regWrite && (Wb_rdAddr!=0) && (Wb_rdAddr==Ex_rs2Addr)) begin
-//        else if (Wb_regWrite && (Ex_rs2_used) && rs2Selected && (Wb_rdAddr==Ex_rs2Addr)) begin
         else if (Wb_regWrite && (Ex_rs2_used) && Ex_rs2Addr!=0 && (Wb_rdAddr==Ex_rs2Addr)) begin
-
             rs2SEL[0]=1'b1;   //forward from WB buffer
             rs2SEL[1]=WBloadInstr;    //instead, forward directly from mem output
         end

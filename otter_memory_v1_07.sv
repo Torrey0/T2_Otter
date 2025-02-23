@@ -55,7 +55,6 @@
     input [31:0] MEM_ADDR2Parse,
     input [31:0] MEM_DIN2,  // Data to save
     input [1:0] MEM_SIZE,   // 0-Byte, 1-Half, 2-Word
-    input MEM_SIGN,         // 1-unsigned 0-signed
     input [1:0] MEM_SIZEParse,
     input MEM_SIGNParse,
     input [31:0] IO_IN,     // Data from IO
@@ -74,6 +73,7 @@
     (* ram_decomp = "power" *) logic [31:0] memory [0:16383];
     
     initial begin
+//        $readmemh("matMult3b3.mem", memory, 0, 16383);
         $readmemh("Test_All.mem", memory, 0, 16383);
     end
     
@@ -93,9 +93,9 @@
       //for sim, do 0
 //        ioBuffer <=0;   //for sim
         //for hw do 4
-        ioBuffer <=4;   //for hw
+//        ioBuffer <=4;   //for hw
         
-        //ioBuffer <= IO_IN;
+        ioBuffer <= IO_IN;
     end
     
     // BRAM requires all reads and writes to occur synchronously
@@ -122,6 +122,7 @@
       if (MEM_RDEN1)                       // need EN for extra load cycle to not change instruction
         MEM_DOUT1 <= memory[MEM_ADDR1];
       if (MEM_RDEN2)                       // Read word from memory
+      //matMult worked with this on parse??
         memReadWord <= memory[wordAddr2];  //hmm
     end
        
@@ -170,7 +171,7 @@
       if(MEM_ADDR2 >= 32'h00010000) begin
       //combinationally set in the mem phase, effectively writing during the mem Phase
         IO_WR = MEM_WE2;                 // IO Write
-        weAddrValid=0;
+        weAddrValid=0;  
       end else begin
         weAddrValid=MEM_WE2;
         IO_WR = 0;                  // not MMIO

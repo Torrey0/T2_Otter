@@ -129,6 +129,7 @@ module OTTER_MCU333(
     logic [4:0] exReg_rs1Addr;  //needed for hazard detection
     logic [4:0] exReg_rs2Addr;
     logic [31:0] exReg_ALUinpA, exReg_ALUinpB;
+    logic [31:0] exReg_rs2;
     logic exReg_regWrite, exReg_memWrite, exReg_memRead2;
     logic [3:0] exReg_aluFun;
     logic [1:0] exReg_rf_wr_sel;
@@ -153,6 +154,7 @@ module OTTER_MCU333(
             exReg_PC <= deReg_PC;
             exReg_ALUinpA <= srcA;  //ALU inputs
             exReg_ALUinpB <= srcB;
+            exReg_rs2 <= rs2;
             exReg_aluFun <= alu_fun;
             exReg_J_Type <= J_Type; //generated immediates
             exReg_B_Type <= B_Type;
@@ -177,8 +179,8 @@ module OTTER_MCU333(
 
     //pipeline registers:
     logic [31:0] memReg_aluRes; //new pipeline values
-    logic [31:0] memReg_PC; //previous pipeline values
-    logic [31:0] memReg_rs2; 
+    logic [31:0] memReg_rs2;    //previous pipeline values
+    logic [31:0] memReg_PC; 
     logic memReg_regWrite, memReg_memWrite, memReg_memRead2;    
     logic [1:0] memReg_rf_wr_sel;
     logic [2:0] memReg_fun3; //trimming IR_Reg, no longer need the entire instruction
@@ -186,8 +188,9 @@ module OTTER_MCU333(
     
     always_ff@(posedge CPU_CLK) begin
             memReg_aluRes <= aluRes;    //new value
+            
             memReg_PC <= exReg_PC;  //previous values
-            memReg_rs2 <= F_rs2Mem;    //forwarded value of rs2
+            memReg_rs2 <= exReg_rs2;    //forwarded value of rs2
             if (notStall) begin
                 memReg_regWrite<= exReg_regWrite;
                 memReg_memWrite <= exReg_memWrite;
@@ -207,30 +210,32 @@ module OTTER_MCU333(
     //not currently assigning or using memBusy1 or memBusy2 (which are present on the 233 diagram, and may need to be used to induce a stall, or when a stall is necessary when writing or reading MMIO
     assign CPU_IOBUS_ADDR = memReg_aluRes;  //IO outputs
     logic [31:0] F_rs2WB; //Forwarded value of rs2 (needed by memory module), this is also the IO data output
-    assign CPU_IOBUS_OUT = F_rs2WB;    
+    assign CPU_IOBUS_OUT = F_rs2Mem;    //While F_rs2WB is technically unused, I beleive it makes it more clear where CPU_IOBUS_OUT is coming out of having this assignment
     
     logic [31:0] DOUT2; //output of the data memory
+//    assign CPU_IOBUS_OUT = DOUT2;    //While F_rs2WB is technically unused, I beleive it makes it more clear where CPU_IOBUS_OUT is coming out of having this assignment
+
     //the wbRegisters are used by the memory for parsing DOUT2. For example, the output of memory will need to be adjusted depending on signed/unsigned, lw, lh, lb.
     logic [2:0] wbReg_fun3; 
     logic [31:0] wbReg_aluRes;
-    logic wbReg_memRead2;
     //computing DOUT1 and DOUT2 is always_ff, so needs to be directly mapped into wbReg,and co.
-    Memory mem(.MEM_CLK(CPU_CLK), .MEM_RDEN1(notStall), .MEM_RDEN2(memReg_memRead2), .MEM_WE2(memReg_memWrite), .MEM_ADDR1(PC[15:2]), .MEM_ADDR2(memReg_aluRes), .MEM_ADDR2Parse(wbReg_aluRes), .MEM_DIN2(memReg_rs2), .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGN(memReg_fun3[2:2]), .MEM_SIGNParse(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1), .MEM_DOUT2(DOUT2));
+    Memory mem(.MEM_CLK(CPU_CLK), .MEM_RDEN1(notStall), .MEM_RDEN2(memReg_memRead2), .MEM_WE2(memReg_memWrite), .MEM_ADDR1(PC[15:2]), .MEM_ADDR2(memReg_aluRes), .MEM_ADDR2Parse(wbReg_aluRes), .MEM_DIN2(F_rs2Mem), .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGNParse(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1), .MEM_DOUT2(DOUT2));
 
-    //ne wb registers
+    //other wb registers
+    logic [31:0] wbReg_rs2;
     logic [31:0] wbReg_PC; 
     logic [1:0] wbReg_rf_wr_sel;
 
     
     //wbReg_regWrite, and wbReg_wa declared in decode since they both enter regFile
     always_ff@(posedge CPU_CLK) begin
+        wbReg_rs2 <= exReg_rs2;
         wbReg_PC <= memReg_PC;
         wbReg_regWrite <= memReg_regWrite;
         wbReg_rf_wr_sel <= memReg_rf_wr_sel;
         wbReg_wa <= memReg_wa;
         wbReg_aluRes <=memReg_aluRes;
         wbReg_fun3 <= memReg_fun3;
-        wbReg_memRead2 <=memReg_memRead2;
         F_rs2WB <= F_rs2Mem;
     end
     
@@ -245,6 +250,8 @@ module OTTER_MCU333(
     //forwarding Unit
     logic [1:0] F_Sel1;
     logic [1:0] F_Sel2;
+    logic [1:0] F_Sel2Delayed;  //buffer the forwarding selection one behind for memory (we want to forward on mem instead of ex for this
+    logic [31:0] aluResWbDelayed;
     logic [1:0] F_Sel2ALU;
     logic MEMloadInstr, WBloadInstr;    //internal, for dataForwarder
     assign MEMloadInstr= memReg_rf_wr_sel[1:0] == 2'b10;    //indicates if this instr is a load, if so may need to stall
@@ -258,10 +265,18 @@ module OTTER_MCU333(
             F_Sel2ALU=2'b00;
         end
     end
+    always_ff@(posedge CPU_CLK) begin
+        F_Sel2Delayed <= F_Sel2;
+        aluResWbDelayed <= wbReg_aluRes;
+    end
+
     dataForwardingUnit forwarder(.Wb_rdAddr(wbReg_wa), .Mem_rdAddr(memReg_wa), .Ex_rs1Addr(exReg_rs1Addr), .Ex_rs2Addr(exReg_rs2Addr), .Wb_regWrite(wbReg_regWrite), .Mem_regWrite(memReg_regWrite), .Ex_rs1_used(exReg_rs1_used), .Ex_rs2_used(exReg_rs2_used), .rs1Selected(exReg_rs1Selected), .MEMloadInstr(MEMloadInstr), .WBloadInstr(WBloadInstr), .rs1SEL(F_Sel1), .rs2SEL(F_Sel2), .notStall(notStall));
     
     rs1Mux forwardMux1(.Ex_rs1(exReg_ALUinpA), .Mem_rs1(memReg_aluRes), .Wb_rs1(wbReg_aluRes), .DOUT2(DOUT2), .rs1Sel(F_Sel1), .rs1(F_rs1));
     rs2Mux forwardMux2ALU(.Ex_rs2(exReg_ALUinpB), .Mem_rs2(memReg_aluRes), .Wb_rs2(wbReg_aluRes), .DOUT2(DOUT2), .rs2Sel(F_Sel2ALU), .rs2(F_rs2ALU));
-    rs2Mux forwardMux2Mem(.Ex_rs2(exReg_ALUinpB), .Mem_rs2(memReg_aluRes), .Wb_rs2(wbReg_aluRes), .DOUT2(DOUT2), .rs2Sel(F_Sel2), .rs2(F_rs2Mem));
     
+    //incorrectly forwarding output of alu as rs2 value for DIN2
+//    rs2MemMux forwardMux2Mem(.Mem_rs2(memReg_rs2), .Mem_aluRes(memReg_aluRes), .Wb_aluRes(wbReg_aluRes), .DOUT2(DOUT2), .rs2Sel(F_Sel2), .rs2(F_rs2Mem));
+      rs2MemMux forwardMux2Mem(.Mem_rs2(memReg_rs2), .Wb_aluResDelayed(aluResWbDelayed), .Wb_aluRes(wbReg_aluRes), .DOUT2(DOUT2), .rs2Sel(F_Sel2Delayed), .rs2(F_rs2Mem));
+
 endmodule
