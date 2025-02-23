@@ -36,13 +36,19 @@ module Test_All_TB();
     end
     //btn 011101
     //no: 011000
-    always begin
-    TB_BTNC=0;
-    TB_SWITCHES=0;
-    #10000
+        always begin
+        TB_BTNC=1;
+        TB_SWITCHES=0;
+        #10
+        TB_BTNC=0;
+//        #10000
+//        TB_SWITCHES=0;
+//        #100
+//        TB_SWITCHES=1;
+    #100000000
     //TB_SWITCHES=3;  //wait until test is complete, so some seperation
     #20
-    TB_SWITCHES=0;  //always want a flag if a test fails
+    TB_SWITCHES=0;  //no flag on test failure
         
     end
     endmodule

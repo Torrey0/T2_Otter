@@ -89,19 +89,12 @@
     // buffer the IO input for reading
     always_ff @(posedge MEM_CLK) begin
       if(MEM_RDEN2)
-      //hard wire the read ioBuffer to 0? when trying to read
-      //for sim, do 0
-//        ioBuffer <=0;   //for sim
-        //for hw do 4
-//        ioBuffer <=4;   //for hw
-        
         ioBuffer <= IO_IN;
     end
     
     // BRAM requires all reads and writes to occur synchronously
     always_ff @(posedge MEM_CLK) begin
     
-      // save data (WD) to memory (ADDR2)
       if (weAddrValid == 1) begin     // write enable and valid address space
         case({MEM_SIZE,byteOffset})
             //making wordAddr2 (on mem phase)?
@@ -152,30 +145,28 @@
         default:  memReadSized = 32'b0;     // unsupported size, byte offset combination
       endcase
     end
- 
-    // Memory Mapped IO
-    //temporarily commented out MMIO-related values for reading vs. writing. These may need to be re-implemented in the future.
+    
+     // Memory Mapped IO
     always_comb begin
-      //if(MEM_ADDR2 >= 32'h00010000) begin  // maybe legit?
-      if(MEM_ADDR2Parse >= 32'h00010000) begin  // external address range
-//           IO_WR = 1;               //read from IO
-
-           MEM_DOUT2 = ioBuffer;            // IO read from buffer
-//            weAddrValid = 0;                 // address beyond memory range
+        //combinatoinal logic to trigger accessing of MMIO
+      if(MEM_ADDR2 >= 32'h00010000) begin  // external address range
+        IO_WR = MEM_WE2;                 // IO Write
+        MEM_DOUT2 = ioBuffer;            // IO read from buffer
+        weAddrValid = 0;                 // address beyond memory range
+      end
+      else begin
+        IO_WR = 0;                  // not MMIO
+        MEM_DOUT2 = memReadSized;   // output sized and sign extended data
+        weAddrValid = MEM_WE2;      // address in valid memory range
+      end
+      
+      //Parsing MMIO,
+      if(MEM_ADDR2Parse >= 32'h00010000) begin  // MEM_ADDR2Parse is buffered by one from MEM_ADDR
+        MEM_DOUT2 = ioBuffer;            // IO read from buffer
       end
       else begin
         MEM_DOUT2 = memReadSized;   // output sized and sign extended data
-//        weAddrValid = MEM_WE2;      // address in valid memory range
       end
-      
-      if(MEM_ADDR2 >= 32'h00010000) begin
-      //combinationally set in the mem phase, effectively writing during the mem Phase
-        IO_WR = MEM_WE2;                 // IO Write
-        weAddrValid=0;  
-      end else begin
-        weAddrValid=MEM_WE2;
-        IO_WR = 0;                  // not MMIO
-     end
     end
         
  endmodule
