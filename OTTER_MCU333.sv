@@ -42,12 +42,14 @@ module OTTER_MCU333(
     ); 
     
     logic notStall; //assigned in code for forwarding Unit, controls PCWrite, and pipeline register progression
-    
+    logic cacheMissStall;    //cacheMissStall causes stall makes us hold PC to the same value until we correclty read it and get DOUT1. Similar to notStall, stalls for instruction memory rather than data memory
+
     logic branchTaken;  //will make the instruction that got pulled from Mem on the cc interpreted as a no-op
     logic branchTakenPropogated;    //propogate branch taken to the next loaded instruction so that it can be interpreted as a no-op
     always_ff @(posedge CPU_CLK) begin
         branchTakenPropogated <= branchTaken;
     end
+    
     //Instruction Fetch
     //local fetch logic:
     logic [31:0] DOUT1, PC; //wires for registers
@@ -57,12 +59,9 @@ module OTTER_MCU333(
     logic [31:0] jalr, branch, jal;  //set by branch address generator
     logic [2:0] pcSource;       //set by branch cond gen
     logic PCWrite;  //will be set by hazard control, for now set always true
-   
-   //cacheMissStall causes stall makes us hold PC to the same value until we correclty read it and get DOUT1
-    logic cacheMissStall;
-    //if cacheMissStall= 1 and branchtaken=1. we want to take the branch anyway, unless of course, notStall=0
+
     assign PCWrite=(notStall && (!cacheMissStall || (branchTaken) ) );    //dont update the PC while we are stalling for new DOUT1
-    //hihgly experimental, not a part of the original code,^^^  in event 
+                                                    //^^^^ if cacheMissStall= 1 and branchtaken=1. we want to take the branch anyway, unless of course, notStall=0
     assign PCPlusFour=PC+4;
     PC_DIN_MUX PCMUX(.SEL(pcSource), .JALR(jalr), .BRANCH(branch), .JAL(jal), .PLUS_FOUR(PCPlusFour), .PC_DIN(PC_DIN));
     PC pc(.PC_DIN(PC_DIN), .PC_RST(CPU_RST), .PC_WE(PCWrite), .CLK(CPU_CLK), .PC_COUNT(PC));
@@ -78,7 +77,6 @@ module OTTER_MCU333(
         end
     end
     always_ff @(posedge CPU_CLK) begin
-        //deReg_IR <= DOUT1;  //set by mem file
         if  (notStall) begin        //only need to prevent PC propogation on data hazard stall. on branchTaken we run a nop, which doesnt use PC anywar
             deReg_PC<=PC;  
         end

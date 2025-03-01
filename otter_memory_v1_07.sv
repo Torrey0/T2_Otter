@@ -66,15 +66,6 @@
     output logic IO_WR,     // IO 1-write 0-read
     
     output logic [31:0] MEM_DOUT1,  // Instruction
-//    //instead, read 8 at a time
-//    output logic [31:0] w0,
-//    output logic [31:0] w1,
-//    output logic [31:0] w2,
-//    output logic [31:0] w3,
-//    output logic [31:0] w4,
-//    output logic [31:0] w5,
-//    output logic [31:0] w6,
-//    output logic [31:0] w7,
     output logic cacheMissStall,
     output logic [31:0] MEM_DOUT2 // Data
     );
@@ -108,8 +99,8 @@
       if(MEM_RDEN2)
         ioBuffer <= IO_IN;
     end
-    
- //all cache stuff for reading DOUT1:
+    //
+ //all Cache stuff is here!!
     logic cache_hit, cache_miss, cache_update;
     logic [31:0] w0;
     logic [31:0] w1;
@@ -119,32 +110,13 @@
     logic [31:0] w5;
     logic [31:0] w6;
     logic [31:0] w7;
-    //assign w's in groups of 8 words by doing this allignment
-    // 0x-0000  want start
-    // 0x-0001
-    //0x- 0010
-    // 0x-0011  <-current   incorrect start
-    // 0x-0100
-    // 0x-0101
-    // 0x-0110
-    // 0x-0111  want end
-    // 0x-1000
-    // 0x-1001
-    // 0x-1010              incorrect end
-    
-    //need to fix bottom 3 here since 3= log2 (8) = log2 (blockSize)
-    //in future, make sure this is consistant with cache when modifying it
+
+    //continuing in future, make sure this is consistant with cache when modifying it
+    //use offset= log2(blockSize), in this case blockSize=8, so offset=3 bits here
     logic [13:0] MEM_ADDR1Offset8;
     assign MEM_ADDR1Offset8[13:3]= MEM_ADDR1[13:3];
     assign MEM_ADDR1Offset8[2:0]=3'b000;
-//    assign w0 = memory[MEM_ADDR1];
-//    assign w1 = memory[MEM_ADDR1+1];
-//    assign w2 = memory[MEM_ADDR1+2];
-//    assign w3 = memory[MEM_ADDR1+3];
-//    assign w4 = memory[MEM_ADDR1+4];
-//    assign w5 = memory[MEM_ADDR1+5];
-//    assign w6 = memory[MEM_ADDR1+6];
-//    assign w7 = memory[MEM_ADDR1+7];
+    //disable bram having a non-synchronous read. This is ok for now, as hardware not necessary for this assignment, and this is really just a verilog skill issue. No real impact on design if not for verilog synthesizer having this here to make the synchronous reading in a seperate module for organized
     assign w0 = memory[MEM_ADDR1Offset8];
     assign w1 = memory[MEM_ADDR1Offset8+1];
     assign w2 = memory[MEM_ADDR1Offset8+2];
@@ -156,14 +128,10 @@
 
     logic [31:0] CacheDOUT1;
     Cache Cache(.PC(MEM_ADDR1), .CLK(MEM_CLK), .update(cache_update), .w0(w0), .w1(w1), .w2(w2), .w3(w3), .w4(w4), .w5(w5), .w6(w6), .w7(w7), .rd(CacheDOUT1), .hit(cache_hit), .miss(cache_miss));
-    //WHERE DOES RST GO?
-        logic cacheMissStallPreInstr;
-
     CacheFSM CacheFSM(.hit(cache_hit), .miss(cache_miss), .CLK(MEM_CLK), .RST(MEM_RST), .update(cache_update), .pc_stall(cacheMissStall));
-//     always_ff @(posedge MEM_CLK) begin
-//        cacheMissStall <= cacheMissStallPreInstr;
-//     end
     
+    //end of cache section
+
     // BRAM requires all reads and writes to occur synchronously
     always_ff @(posedge MEM_CLK) begin
     
@@ -186,9 +154,7 @@
  
       // read all data synchronously required for BRAM
       if (MEM_RDEN1)                       // need EN for extra load cycle to not change instruction
-        //MEM_DOUT1 <= memory[MEM_ADDR1];
         MEM_DOUT1 <=CacheDOUT1;
-        //we now read 8 words instead of 1.
       if (MEM_RDEN2)                       // Read word from memory
         memReadWord <= memory[wordAddr2];  //hmm
     end
