@@ -42,6 +42,7 @@ module OTTER_MCU333(
     ); 
     
     logic notStall; //assigned in code for forwarding Unit, controls PCWrite, and pipeline register progression
+    
     logic branchTaken;  //will make the instruction that got pulled from Mem on the cc interpreted as a no-op
     logic branchTakenPropogated;    //propogate branch taken to the next loaded instruction so that it can be interpreted as a no-op
     always_ff @(posedge CPU_CLK) begin
@@ -57,7 +58,11 @@ module OTTER_MCU333(
     logic [2:0] pcSource;       //set by branch cond gen
     logic PCWrite;  //will be set by hazard control, for now set always true
    
-    assign PCWrite=notStall;
+   //cacheMissStall causes stall makes us hold PC to the same value until we correclty read it and get DOUT1
+    logic cacheMissStall;
+    //if cacheMissStall= 1 and branchtaken=1. we want to take the branch anyway, unless of course, notStall=0
+    assign PCWrite=(notStall && (!cacheMissStall || (branchTaken) ) );    //dont update the PC while we are stalling for new DOUT1
+    //hihgly experimental, not a part of the original code,^^^  in event 
     assign PCPlusFour=PC+4;
     PC_DIN_MUX PCMUX(.SEL(pcSource), .JALR(jalr), .BRANCH(branch), .JAL(jal), .PLUS_FOUR(PCPlusFour), .PC_DIN(PC_DIN));
     PC pc(.PC_DIN(PC_DIN), .PC_RST(CPU_RST), .PC_WE(PCWrite), .CLK(CPU_CLK), .PC_COUNT(PC));
@@ -65,9 +70,8 @@ module OTTER_MCU333(
    //pipeline registers. these are the registers the decode part of computer needs to read on the next cycle
     logic [31:0] deReg_IR, deReg_PC;
     //
-    
     always_comb begin
-        if(branchTaken || branchTakenPropogated) begin   //perform nop if branch taken
+        if(branchTaken || branchTakenPropogated) begin   //perform nop if branch taken. Also just read no-ops until the correct DOUT1 is read for cache misses
             deReg_IR=8'h00000013;   //nop instruction
         end else begin
             deReg_IR=DOUT1;
@@ -76,7 +80,7 @@ module OTTER_MCU333(
     always_ff @(posedge CPU_CLK) begin
         //deReg_IR <= DOUT1;  //set by mem file
         if  (notStall) begin        //only need to prevent PC propogation on data hazard stall. on branchTaken we run a nop, which doesnt use PC anywar
-            deReg_PC<=PC;
+            deReg_PC<=PC;  
         end
      end
 
@@ -211,13 +215,31 @@ module OTTER_MCU333(
     assign CPU_IOBUS_ADDR = memReg_aluRes;  //IO outputs
     assign CPU_IOBUS_OUT = F_rs2Mem;    //output of CPU is the input to memory cuz we treating cpu external like another memory
     
-    logic [31:0] DOUT2; //output of the data memory
+    logic [31:0] DOUT2; //output data of memory
+//    logic [31:0] MainMemDOUT1;  //IR output of the main memory
+    //cache logic
+//    logic [31:0] w0;
+//    logic [31:0] w1;
+//    logic [31:0] w2;
+//    logic [31:0] w3;
+//    logic [31:0] w4;
+//    logic [31:0] w5;
+//    logic [31:0] w6;
+//    logic [31:0] w7;
 
     //the wbRegisters are used by the memory for parsing DOUT2. For example, the output of memory will need to be adjusted depending on signed/unsigned, lw, lh, lb.
     logic [2:0] wbReg_fun3; 
     logic [31:0] wbReg_aluRes;
     //computing DOUT1 and DOUT2 is always_ff, so needs to be directly mapped into wbReg,and co.
-    Memory mem(.MEM_CLK(CPU_CLK), .MEM_RDEN1(notStall), .MEM_RDEN2(memReg_memRead2), .MEM_WE2(memReg_memWrite), .MEM_ADDR1(PC[15:2]), .MEM_ADDR2(memReg_aluRes), .MEM_ADDR2Parse(wbReg_aluRes), .MEM_DIN2(F_rs2Mem), .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGNParse(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1), .MEM_DOUT2(DOUT2));
+    Memory mem(.MEM_CLK(CPU_CLK), .MEM_RDEN1(notStall), .MEM_RDEN2(memReg_memRead2), .MEM_WE2(memReg_memWrite), .MEM_ADDR1(PC[15:2]), .MEM_ADDR2(memReg_aluRes), .MEM_ADDR2Parse(wbReg_aluRes), .MEM_DIN2(F_rs2Mem), 
+                                  .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGNParse(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1),
+//                                  .w0(w0), .w1(w1), .w2(w2), .w3(w3), .w4(w4), .w5(w5), .w6(w6), .w7(w7),
+                                   .MEM_DOUT2(DOUT2)
+                                   , .cacheMissStall(cacheMissStall), .MEM_RST(CPU_RST));
+
+
+
+
 
     //other wb registers
     logic [31:0] wbReg_PC; 
@@ -265,7 +287,8 @@ module OTTER_MCU333(
         aluResWbDelayed <= wbReg_aluRes;    //we need to buffer the aluRes by 1 for forwarding 2 instr above to memory. This value has already been written back 1 cycle before now, but we didnt pull its value from regFile 2 cycles ago when we accessed rs2
     end
 
-    dataForwardingUnit forwarder(.Wb_rdAddr(wbReg_wa), .Mem_rdAddr(memReg_wa), .Ex_rs1Addr(exReg_rs1Addr), .Ex_rs2Addr(exReg_rs2Addr), .Wb_regWrite(wbReg_regWrite), .Mem_regWrite(memReg_regWrite), .Ex_rs1_used(exReg_rs1_used), .Ex_rs2_used(exReg_rs2_used), .rs1Selected(exReg_rs1Selected), .MEMloadInstr(MEMloadInstr), .WBloadInstr(WBloadInstr), .rs1SEL(F_Sel1), .rs2SEL(F_Sel2), .notStall(notStall));
+    dataForwardingUnit forwarder(.Wb_rdAddr(wbReg_wa), .Mem_rdAddr(memReg_wa), .Ex_rs1Addr(exReg_rs1Addr), .Ex_rs2Addr(exReg_rs2Addr), .Wb_regWrite(wbReg_regWrite), .Mem_regWrite(memReg_regWrite), .Ex_rs1_used(exReg_rs1_used), .Ex_rs2_used(exReg_rs2_used), 
+                                 .rs1Selected(exReg_rs1Selected), .MEMloadInstr(MEMloadInstr), .WBloadInstr(WBloadInstr), .rs1SEL(F_Sel1), .rs2SEL(F_Sel2), .notStall(notStall));
     
     rs1Mux forwardMux1(.Ex_rs1(exReg_ALUinpA), .Mem_rs1(memReg_aluRes), .Wb_rs1(wbReg_aluRes), .DOUT2(DOUT2), .rs1Sel(F_Sel1), .rs1(F_rs1));
     rs2Mux forwardMux2ALU(.Ex_rs2(exReg_ALUinpB), .Mem_rs2(memReg_aluRes), .Wb_rs2(wbReg_aluRes), .DOUT2(DOUT2), .rs2Sel(F_Sel2ALU), .rs2(F_rs2ALU));
