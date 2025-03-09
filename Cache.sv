@@ -23,15 +23,16 @@
 module Cache(
     input [13:0] PC,    //this is our new memAddr1
     input CLK,
-    input update,
+//    input update,
     input logic [31:0] w0,
     input logic [31:0] w1,
-    input logic [31:0] w2, 
-    input logic [31:0] w3,
-    input logic [31:0] w4, 
-    input logic [31:0] w5,
-    input logic [31:0] w6, 
-    input logic [31:0] w7,
+//    input logic [31:0] w2, 
+    input logic [2:0] loadCacheState,
+//    input logic [31:0] w3,
+//    input logic [31:0] w4, 
+//    input logic [31:0] w5,
+//    input logic [31:0] w6, 
+//    input logic [31:0] w7,
     output logic [31:0] rd,
     output logic hit, 
     output logic miss
@@ -86,18 +87,35 @@ module Cache(
     end
     
     always_ff @(posedge CLK) begin  //changed from negedge! might be a mistake
-        if(update) begin
-            data[index][0] <= w0;
-            data[index][1] <= w1;
-            data[index][2] <= w2;
-            data[index][3] <= w3;
-            data[index][4] <= w4;
-            data[index][5] <= w5;
-            data[index][6] <= w6;
-            data[index][7] <= w7;
-            tags[index] <= pc_tag;  //highly experimental? is this the correct timing? why didnt she have this here?
-            valid_bits[index] <= 1'b1;
-        end
+//        if(update) begin
+//            data[index][0] <= w0;
+//            data[index][1] <= w1;
+//            data[index][2] <= w2;
+//            data[index][3] <= w3;
+//            data[index][4] <= w4;
+//            data[index][5] <= w5;
+//            data[index][6] <= w6;
+//            data[index][7] <= w7;
+//            tags[index] <= pc_tag;  //highly experimental? is this the correct timing? why didnt she have this here?
+//            valid_bits[index] <= 1'b1;
+//        end
+//         if(update) begin
+            if(loadCacheState==2'b01) begin
+                data[index][0] <= w0;
+                data[index][1] <= w1;
+            end else if(loadCacheState==3'b010) begin
+                data[index][2] <= w0;
+                data[index][3] <= w1;
+            end else if (loadCacheState==3'b011) begin
+                data[index][4] <= w0;
+                data[index][5] <= w1;
+            end else if (loadCacheState==3'b100) begin
+                data[index][6] <= w0;
+                data[index][7] <= w1;
+                tags[index] <= pc_tag;  //highly experimental? is this the correct timing? why didnt she have this here?
+                valid_bits[index] <= 1'b1;
+            end
+//        end
     end
     
 endmodule

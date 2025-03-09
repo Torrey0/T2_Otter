@@ -54,7 +54,7 @@
     
     input [13:0] MEM_ADDR1, // Instruction Memory word Addr (Connect to PC[15:2])
 //    input logic [31:0] a,   //from imem module, for cache use
-    
+    input branchTaken,      //when we take a branch, we need to reset stage of instruction cache, whatever it was loading before is irrelevant
     input [31:0] MEM_ADDR2, // Data Memory Addr
     input [31:0] MEM_ADDR2Parse,
     input [31:0] MEM_DIN2,  // Data to save
@@ -101,35 +101,46 @@
     end
     //
  //all Cache stuff is here!!
-    logic cache_hit, cache_miss, cache_update;
+    logic cache_hit, cache_miss, loadMem;
     logic [31:0] w0;
     logic [31:0] w1;
     logic [31:0] w2;
-    logic [31:0] w3;
-    logic [31:0] w4;
-    logic [31:0] w5;
-    logic [31:0] w6;
-    logic [31:0] w7;
+//    logic [31:0] w3;
+//    logic [31:0] w4;
+//    logic [31:0] w5;
+//    logic [31:0] w6;
+//    logic [31:0] w7;
 
     //continuing in future, make sure this is consistant with cache when modifying it
     //use offset= log2(blockSize), in this case blockSize=8, so offset=3 bits here
-    logic [13:0] MEM_ADDR1Offset8;
-    assign MEM_ADDR1Offset8[13:3]= MEM_ADDR1[13:3];
-    assign MEM_ADDR1Offset8[2:0]=3'b000;
-    //disable bram having a non-synchronous read. This is ok for now, as hardware not necessary for this assignment, and this is really just a verilog skill issue. No real impact on design if not for verilog synthesizer having this here to make the synchronous reading in a seperate module for organized
-    assign w0 = memory[MEM_ADDR1Offset8];
-    assign w1 = memory[MEM_ADDR1Offset8+1];
-    assign w2 = memory[MEM_ADDR1Offset8+2];
-    assign w3 = memory[MEM_ADDR1Offset8+3];
-    assign w4 = memory[MEM_ADDR1Offset8+4];
-    assign w5 = memory[MEM_ADDR1Offset8+5];
-    assign w6 = memory[MEM_ADDR1Offset8+6];
-    assign w7 = memory[MEM_ADDR1Offset8+7];
+    logic [2:0] loadMemState;
+    logic [2:0] loadCacheState;
+    
+    logic [13:0] MEM_ADDR1Offset8_1;
+    logic [13:0] MEM_ADDR1Offset8_2;
+    assign MEM_ADDR1Offset8_1[13:3]= MEM_ADDR1[13:3];   //assign reading address given block of memory
+    assign MEM_ADDR1Offset8_2[13:3]= MEM_ADDR1[13:3];
+
+    //access correct word within that block of memory. These accesses happen consecutively as loadMemState is incremented
+    //Thus, this logic is designed to follow:
+    //in= 0b001 => out=0b000
+    //in=0b010 => out=0b010
+    //in=0b011 => out=0b100
+    //in=0b100 => out=0b110
+    //where in is the current index for the read (1, 2, 3, 4), out is address for the pair of words that will be read
+    assign MEM_ADDR1Offset8_1[2:0] = { loadMemState[2] | (loadMemState[1] & loadMemState[0]),  (~loadMemState[0]), 1'b0 };
+    assign MEM_ADDR1Offset8_2[2:0]={MEM_ADDR1Offset8_1[2:1], 1'b1};
+
+    always_ff @(posedge MEM_CLK) begin
+        if(loadMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
+            w0 <=memory[MEM_ADDR1Offset8_1];
+            w1 <=memory[MEM_ADDR1Offset8_2];
+        end
+    end
 
     logic [31:0] CacheDOUT1;
-    Cache Cache(.PC(MEM_ADDR1), .CLK(MEM_CLK), .update(cache_update), .w0(w0), .w1(w1), .w2(w2), .w3(w3), .w4(w4), .w5(w5), .w6(w6), .w7(w7), .rd(CacheDOUT1), .hit(cache_hit), .miss(cache_miss));
-    CacheFSM CacheFSM(.hit(cache_hit), .miss(cache_miss), .CLK(MEM_CLK), .RST(MEM_RST), .update(cache_update), .pc_stall(cacheMissStall));
-    
+    Cache Cache(.PC(MEM_ADDR1), .CLK(MEM_CLK), .w0(w0), .w1(w1), .rd(CacheDOUT1), .hit(cache_hit), .loadCacheState(loadCacheState), .miss(cache_miss));
+    CacheFSM CacheFSM(.hit(cache_hit), .miss(cache_miss), .CLK(MEM_CLK), .RST(MEM_RST), .branchTaken(branchTaken), .loadMem(loadMem), .loadMemState(loadMemState), .loadCacheState(loadCacheState), .pc_stall(cacheMissStall));
     //end of cache section
 
     // BRAM requires all reads and writes to occur synchronously

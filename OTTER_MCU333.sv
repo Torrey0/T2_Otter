@@ -233,7 +233,7 @@ module OTTER_MCU333(
                                   .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGNParse(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1),
 //                                  .w0(w0), .w1(w1), .w2(w2), .w3(w3), .w4(w4), .w5(w5), .w6(w6), .w7(w7),
                                    .MEM_DOUT2(DOUT2)
-                                   , .cacheMissStall(cacheMissStall), .MEM_RST(CPU_RST));
+                                   , .cacheMissStall(cacheMissStall), .branchTaken(branchTaken), .MEM_RST(CPU_RST));
 
 
 
