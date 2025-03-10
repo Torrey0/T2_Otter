@@ -27,8 +27,8 @@ module CacheFSM(
     input RST, 
     input branchTaken,
     output logic loadMem,
-    output logic [2:0] loadMemState,    //loading the memory takes three cycles since we are loading 8 bytes, but can only load at most 3 without exceeding BRAM usage
-    output logic [2:0] loadCacheState,    //loading the memory takes three cycles since we are loading 8 bytes, but can only load at most 3 without exceeding BRAM usage
+    output logic [3:0] loadMemState,    //loading the memory takes three cycles since we are loading 8 bytes, but can only load at most 3 without exceeding BRAM usage
+    output logic [3:0] loadCacheState,    //loading the memory takes three cycles since we are loading 8 bytes, but can only load at most 3 without exceeding BRAM usage
 //    output logic updateCache, 
     output logic pc_stall
     );
@@ -57,9 +57,10 @@ module CacheFSM(
                 loadMemState<=0; 
             else if(PS==ST_READ_MEM) begin
                 //add one to the current loading State, supports adding up to 4
-                loadMemState[0] <= ~loadMemState[0]; 
-                loadMemState[1] <= loadMemState[1] ^ loadMemState[0];
-                loadMemState[2] <= loadMemState[1] & loadMemState[0];
+                loadMemState <= loadMemState +1;
+//                loadMemState[0] <= ~loadMemState[0]; 
+//                loadMemState[1] <= loadMemState[1] ^ loadMemState[0];
+//                loadMemState[2] <= loadMemState[1] & loadMemState[0];
             end
             
             loadCacheState<=loadMemState;
@@ -93,7 +94,7 @@ module CacheFSM(
                 ST_READ_MEM: begin                  
                     loadMem =1'b1;
                     pc_stall = 1'b1;     
-                    if(loadMemState==3'b100) begin                  
+                    if(loadMemState==4'b1000) begin                  
                         NS = ST_STORE_CACHE;
                     end
                     else begin

@@ -70,6 +70,15 @@
     output logic [31:0] MEM_DOUT2, // Data
     output logic dataMemStall         //memory module's notStall, triggered on miss reading from data Memory
     );
+    logic IOADDR;   //indicates if we are reading/writing to IO
+    logic IOADDRParse;
+    assign IOADDR=(MEM_ADDR2 >= 32'h00010000);
+    assign IOADDRParse= (MEM_ADDR2Parse >= 32'h00010000);
+    logic cacheRead2;
+    assign cachRead2= (~IOADDR) & MEM_RDEN2;
+    
+    
+    
     //logic [13:0] wordAddr2Parse;
     logic [13:0] wordAddr2;
     logic [31:0] memReadWord, ioBuffer, memReadSized;
@@ -104,24 +113,26 @@
  //all Cache stuff is here!!
     logic cache_hit, cache_miss, loadMem;
     logic [31:0] w0;
-    logic [31:0] w1;
+    //logic [31:0] w1;
 
     //continuing in future, make sure this is consistant with cache when modifying it
     //use offset= log2(blockSize), in this case blockSize=8, so offset=3 bits here
-    logic [2:0] loadMemState;
-    logic [2:0] loadCacheState;
+    logic [3:0] loadMemState;
+    logic [3:0] loadCacheState;
     
     logic [13:0] MEM_ADDR1Offset8_1;
-    logic [13:0] MEM_ADDR1Offset8_2;
+//    logic [13:0] MEM_ADDR1Offset8_2;
     assign MEM_ADDR1Offset8_1[13:3]= MEM_ADDR1[13:3];   //assign reading address given block of memory
-    assign MEM_ADDR1Offset8_2[13:3]= MEM_ADDR1[13:3];
+//    assign MEM_ADDR1Offset8_2[13:3]= MEM_ADDR1[13:3];
     /* the below assign statement create the following logic, all other situations are dont cares
     in= 0b001 => out=0b000
 in=0b010 => out=0b010
 in=0b011 => out=0b100
 in=0b100 => out=0b110*/
-    assign MEM_ADDR1Offset8_1[2:0] = { loadMemState[2] | (loadMemState[1] & loadMemState[0]),  (~loadMemState[0]), 1'b0 };
-    assign MEM_ADDR1Offset8_2[2:0]={MEM_ADDR1Offset8_1[2:1], 1'b1};
+    assign MEM_ADDR1Offset8_1[2:0] = loadMemState-1;
+
+//    assign MEM_ADDR1Offset8_1[2:0] = { loadMemState[2] | (loadMemState[1] & loadMemState[0]),  (~loadMemState[0]), 1'b0 };
+//    assign MEM_ADDR1Offset8_2[2:0]={MEM_ADDR1Offset8_1[2:1], 1'b1};
 
 //    //below code has been moved down to support BRAM since only one at a time should be happening
 //    always_ff @(posedge MEM_CLK) begin
@@ -132,32 +143,32 @@ in=0b100 => out=0b110*/
 //    end
 
     logic [31:0] CacheDOUT1;
-    Cache Cache(.PC(MEM_ADDR1), .CLK(MEM_CLK), .w0(w0), .w1(w1), .rd(CacheDOUT1), .hit(cache_hit), .loadCacheState(loadCacheState), .miss(cache_miss));
+    Cache Cache(.PC(MEM_ADDR1), .CLK(MEM_CLK), .w0(w0), .rd(CacheDOUT1), .hit(cache_hit), .loadCacheState(loadCacheState), .miss(cache_miss));
     CacheFSM CacheFSM(.hit(cache_hit), .miss(cache_miss), .CLK(MEM_CLK), .RST(MEM_RST), .branchTaken(branchTaken), .loadMem(loadMem), .loadMemState(loadMemState), .loadCacheState(loadCacheState), .pc_stall(cacheMissStall));
     //end of instruction cache section
     //start of data cacheSection
        logic datacache_hit, datacache_miss, dataloadMem;
     logic [31:0] dataw0;
-    logic [31:0] dataw1;
+    //logic [31:0] dataw1;
 
     //continuing in future, make sure this is consistant with cache when modifying it
     //use offset= log2(blockSize), in this case blockSize=8, so offset=3 bits here
-    logic [1:0] dataLoadMemState;
-    logic [1:0] dataLoadCacheState; //propgated of above
+    logic [2:0] dataLoadMemState;
+    logic [2:0] dataLoadCacheState; //propgated of above
     
-    logic [1:0] dataStoreCacheState;
-    logic [1:0] dataStoreMemState;  //propgated of above
+    logic [2:0] dataStoreCacheState;
+    logic [2:0] dataStoreMemState;  //propgated of above
     logic tryWrite;
     logic dirtyTarget;
     logic [13:0] MEM_ADDR2Offset8_1;
-    logic [13:0] MEM_ADDR2Offset8_2;
+//    logic [13:0] MEM_ADDR2Offset8_2;
     assign MEM_ADDR2Offset8_1[13:2]= wordAddr2[13:2];   //assign reading address given block of memory
-    assign MEM_ADDR2Offset8_2[13:2]= wordAddr2[13:2];
+//    assign MEM_ADDR2Offset8_2[13:2]= wordAddr2[13:2];
     /* the below assign statement create the following logic, all other situations are dont cares
     in= 0b01 => out=0b00
 in=0b10 => out=0b10*/
-    assign MEM_ADDR2Offset8_1[1:0] = { (dataLoadMemState[1]), 1'b0 };
-    assign MEM_ADDR2Offset8_2[1:0]={MEM_ADDR2Offset8_1[1:1], 1'b1};
+    assign MEM_ADDR2Offset8_1[1:0] = dataLoadMemState-1;
+//    assign MEM_ADDR2Offset8_2[1:0]={MEM_ADDR2Offset8_1[1:1], 1'b1};
 
     //moving these below to make it an if else, either storing or loading
 //    always_ff @(posedge MEM_CLK) begin
@@ -167,58 +178,43 @@ in=0b10 => out=0b10*/
 //        end 
 //    end
     logic dataStoreMem;
-    logic [31:0] memOut0, memOut1;
+    logic [31:0] memOut0;//, memOut1;
     logic [13:0] storeMEM_ADDR2Offset8_1;
-    logic [13:0] storeMEM_ADDR2Offset8_2;
+//    logic [13:0] storeMEM_ADDR2Offset8_2;
     assign storeMEM_ADDR2Offset8_1[13:2]= wordAddr2[13:2];   //assign reading address given block of memory
-    assign storeMEM_ADDR2Offset8_2[13:2]= wordAddr2[13:2];
-    assign storeMEM_ADDR2Offset8_1[1:0] = { (dataStoreMemState[1]), 1'b0 };
-    assign storeMEM_ADDR2Offset8_2[1:0]={MEM_ADDR2Offset8_1[1:1], 1'b1};
+//    assign storeMEM_ADDR2Offset8_2[13:2]= wordAddr2[13:2];
+//    assign storeMEM_ADDR2Offset8_1[1:0] = { (dataStoreMemState[1]), 1'b0 };
+    assign storeMEM_ADDR2Offset8_1[1:0] = dataStoreMemState[1]-1;
+
+//    assign storeMEM_ADDR2Offset8_2[1:0]={MEM_ADDR2Offset8_1[1:1], 1'b1};
     
     //we fr need to re-structure to read effectively one at a time...
     always_ff @(posedge MEM_CLK) begin
         if(dataloadMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
             dataw0 <= memory[MEM_ADDR2Offset8_1];
 //            dataw1 <=memory[MEM_ADDR2Offset8_2];
-        end else if(dataStoreMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
+        end  if(dataStoreMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
             memory[storeMEM_ADDR2Offset8_1]<=memOut0;
 //            memory[storeMEM_ADDR2Offset8_2]<=memOut1;
-        end else  if(loadMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
+        end   if(loadMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
             w0 <=memory[MEM_ADDR1Offset8_1];
 //            w1 <=memory[MEM_ADDR1Offset8_2];
         end
     end
 
-    logic [31:0] CacheDOUT2;
 
-    dataCache dataCache(.MEM_SIZE(MEM_SIZE), .byteOffset(byteOffset), .Addr(wordAddr2), .readEnable(MEM_RDEN2), .dirtyTarget(dirtyTarget), .CLK(MEM_CLK), .w0(dataw0), .w1(dataw1), .dataOut(CacheDOUT2), .hit(datacache_hit), .loadMemState(dataLoadCacheState), .storeMemState(dataStoreCacheState), .tryWrite(tryWrite), .storeInput(MEM_DIN2), .miss(datacache_miss), .memOut0(memOut0), .memOut1(memOut1));
-    dataCacheFSM dataCacheFSM(.storeMem(dataStoreMem), .readEnable(MEM_RDEN2), .dirtyTarget(dirtyTarget), .writeEnable(weAddrValid), .hit(datacache_hit), .miss(datacache_miss), .CLK(MEM_CLK), .RST(MEM_RST), .loadMem(dataloadMem), .loadMemState(dataLoadMemState), .loadCacheState(dataLoadCacheState), .storeMemState(dataStoreMemState) , .storeCacheState(dataStoreCacheState), .tryWrite(tryWrite), .pc_stall(dataMemStall));
+
+    logic [31:0] CacheDOUT2;
+    logic blockFull;
+    dataCache dataCache(.storeFirst(storeFirst), .MEM_SIZE(MEM_SIZE), .byteOffset(byteOffset), .Addr(wordAddr2), .readEnable(cachRead2), .CLK(MEM_CLK), .w0(dataw0), .dataOut(CacheDOUT2), .readHit(readHit), .loadMemState(dataLoadCacheState), .storeMemState(dataStoreCacheState), .tryWrite(tryWrite), .storeInput(MEM_DIN2), .memOut0(memOut0));
+    dataCacheFSM dataCacheFSM(.storeFirst(storeFirst), .storeMem(dataStoreMem), .readEnable(cachRead2), .writeEnable(weAddrValid), .readHit(readHit), .CLK(MEM_CLK), .RST(MEM_RST), .loadMem(dataloadMem), .loadMemState(dataLoadMemState), .loadCacheState(dataLoadCacheState), .storeMemState(dataStoreMemState) , .storeCacheState(dataStoreCacheState), .tryWrite(tryWrite), .pc_stall(dataMemStall));
     
     // BRAM requires all reads and writes to occur synchronously
     always_ff @(posedge MEM_CLK) begin
-    
-//      if (weAddrValid == 1) begin     // write enable and valid address space
-//        case({MEM_SIZE,byteOffset})
-//            //making wordAddr2 (on mem phase)?
-//            //this needs to be in the cache effectively
-//            4'b0000: memory[wordAddr2][7:0]   <= MEM_DIN2[7:0];     // sb at byte offsets
-//            4'b0001: memory[wordAddr2][15:8]  <= MEM_DIN2[7:0];
-//            4'b0010: memory[wordAddr2][23:16] <= MEM_DIN2[7:0];
-//            4'b0011: memory[wordAddr2][31:24] <= MEM_DIN2[7:0];
-//            4'b0100: memory[wordAddr2][15:0]  <= MEM_DIN2[15:0];    // sh at byte offsets
-//            4'b0101: memory[wordAddr2][23:8]  <= MEM_DIN2[15:0];
-//            4'b0110: memory[wordAddr2][31:16] <= MEM_DIN2[15:0];
-//            4'b1000: memory[wordAddr2]        <= MEM_DIN2;          // sw
-//			      //default: memory[wordAddr2]      <= 32'b0   // unsupported size, byte offset
-//			      // removed to avoid mistakes causing memory to be zeroed.
-//        endcase
-//      end
-
- 
       // read all data synchronously required for BRAM
       if (MEM_RDEN1)                       // need EN for extra load cycle to not change instruction
         MEM_DOUT1 <=CacheDOUT1;
-      if (MEM_RDEN2)                       // Read word from memory
+      if (cachRead2)                       // Read word from memory
         memReadWord <= CacheDOUT2;  //hmm
     end
        
@@ -250,9 +246,11 @@ in=0b10 => out=0b10*/
     end
     
      // Memory Mapped IO
+     
     always_comb begin
         //combinatoinal logic to trigger accessing of MMIO
-      if(MEM_ADDR2 >= 32'h00010000) begin  // external address range
+        //used when writing
+      if(IOADDR) begin  // external address range
         IO_WR = MEM_WE2;                 // IO Write
         MEM_DOUT2 = ioBuffer;            // IO read from buffer
         weAddrValid = 0;                 // address beyond memory range
@@ -264,7 +262,8 @@ in=0b10 => out=0b10*/
       end
       
       //Parsing MMIO,
-      if(MEM_ADDR2Parse >= 32'h00010000) begin  // MEM_ADDR2Parse is buffered by one from MEM_ADDR
+      //used when reading
+      if(IOADDRParse) begin  // MEM_ADDR2Parse is buffered by one from MEM_ADDR
         MEM_DOUT2 = ioBuffer;            // IO read from buffer
       end
       else begin

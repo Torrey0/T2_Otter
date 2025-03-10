@@ -44,7 +44,7 @@ module OTTER_MCU333(
     logic notStallRAL; //assigned in code for forwarding Unit, controls PCWrite, and pipeline register progression
     logic cacheMissStall;    //cacheMissStall causes stall makes us hold PC to the same value until we correclty read it and get DOUT1. Similar to notStall, stalls for instruction memory rather than data memory
     logic dataMemStall; //notStall's twin
-    assign notStall=notStallRAL | (~dataMemStall);
+    assign notStall=notStallRAL && (~dataMemStall); //0,- =>notStall=0. -,1 =>notStall=0. 1,0 =>notStall=1
     logic branchTaken;  //will make the instruction that got pulled from Mem on the cc interpreted as a no-op
     logic branchTakenPropogated;    //propogate branch taken to the next loaded instruction so that it can be interpreted as a no-op
     always_ff @(posedge CPU_CLK) begin
@@ -190,21 +190,23 @@ module OTTER_MCU333(
     logic [4:0] memReg_wa;
     
     always_ff@(posedge CPU_CLK) begin
-            memReg_aluRes <= aluRes;    //new value
-            
-            memReg_PC <= exReg_PC;  //previous values
-            memReg_rs2 <= exReg_rs2;    //forwarded value of rs2
-            if (notStall) begin
-                memReg_regWrite<= exReg_regWrite;
-                memReg_memWrite <= exReg_memWrite;
-            end else begin
-                memReg_regWrite <= 1'b0;
-                memReg_memWrite <= 1'b0;
+            if (~dataMemStall) begin    //hold data values here for reading on data mem stall
+                memReg_aluRes <= aluRes;    //new value
+                
+                memReg_PC <= exReg_PC;  //previous values
+                memReg_rs2 <= exReg_rs2;    //forwarded value of rs2
+                if (notStallRAL) begin  //on RAL stall let values continue, signaling stall is over
+                    memReg_regWrite<= exReg_regWrite;
+                    memReg_memWrite <= exReg_memWrite;
+                end else begin
+                    memReg_regWrite <= 1'b0;
+                    memReg_memWrite <= 1'b0;
+                end
+                memReg_memRead2 <= exReg_memRead2;
+                memReg_rf_wr_sel <= exReg_rf_wr_sel;
+                memReg_fun3 <= exReg_fun3; //only continueing to use part of IR
+                memReg_wa <= exReg_wa;
             end
-            memReg_memRead2 <= exReg_memRead2;
-            memReg_rf_wr_sel <= exReg_rf_wr_sel;
-            memReg_fun3 <= exReg_fun3; //only continueing to use part of IR
-            memReg_wa <= exReg_wa;
     end
     
     
