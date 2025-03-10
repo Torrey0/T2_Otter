@@ -100,7 +100,7 @@ module Cache(
 //            valid_bits[index] <= 1'b1;
 //        end
 //         if(update) begin
-            if(loadCacheState==2'b01) begin
+            if(loadCacheState==3'b001) begin
                 data[index][0] <= w0;
                 data[index][1] <= w1;
             end else if(loadCacheState==3'b010) begin

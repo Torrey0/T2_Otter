@@ -40,10 +40,11 @@ module OTTER_MCU333(
     output [31:0] CPU_IOBUS_ADDR,
     output CPU_IOBUS_WR
     ); 
-    
-    logic notStall; //assigned in code for forwarding Unit, controls PCWrite, and pipeline register progression
+    logic notStall;
+    logic notStallRAL; //assigned in code for forwarding Unit, controls PCWrite, and pipeline register progression
     logic cacheMissStall;    //cacheMissStall causes stall makes us hold PC to the same value until we correclty read it and get DOUT1. Similar to notStall, stalls for instruction memory rather than data memory
-
+    logic dataMemStall; //notStall's twin
+    assign notStall=notStallRAL | (~dataMemStall);
     logic branchTaken;  //will make the instruction that got pulled from Mem on the cc interpreted as a no-op
     logic branchTakenPropogated;    //propogate branch taken to the next loaded instruction so that it can be interpreted as a no-op
     always_ff @(posedge CPU_CLK) begin
@@ -140,7 +141,7 @@ module OTTER_MCU333(
     logic exReg_rs1Selected;
     logic exReg_rs2Selected;
     //
-    
+    //testing if wiating for DOUT1 mem reads to finish fixes the issue, and allows running on hardware.
     always_ff @(posedge CPU_CLK) begin
          if (notStall) begin
             exReg_opcode <= deReg_IR[6:0];  //transfer previous pipeline values, trimming IR
@@ -233,7 +234,7 @@ module OTTER_MCU333(
                                   .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGNParse(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1),
 //                                  .w0(w0), .w1(w1), .w2(w2), .w3(w3), .w4(w4), .w5(w5), .w6(w6), .w7(w7),
                                    .MEM_DOUT2(DOUT2)
-                                   , .cacheMissStall(cacheMissStall), .branchTaken(branchTaken), .MEM_RST(CPU_RST));
+                                   , .cacheMissStall(cacheMissStall), .dataMemStall(dataMemStall), .branchTaken(branchTaken), .MEM_RST(CPU_RST));
 
 
 
@@ -286,7 +287,7 @@ module OTTER_MCU333(
     end
 
     dataForwardingUnit forwarder(.Wb_rdAddr(wbReg_wa), .Mem_rdAddr(memReg_wa), .Ex_rs1Addr(exReg_rs1Addr), .Ex_rs2Addr(exReg_rs2Addr), .Wb_regWrite(wbReg_regWrite), .Mem_regWrite(memReg_regWrite), .Ex_rs1_used(exReg_rs1_used), .Ex_rs2_used(exReg_rs2_used), 
-                                 .rs1Selected(exReg_rs1Selected), .MEMloadInstr(MEMloadInstr), .WBloadInstr(WBloadInstr), .rs1SEL(F_Sel1), .rs2SEL(F_Sel2), .notStall(notStall));
+                                 .rs1Selected(exReg_rs1Selected), .MEMloadInstr(MEMloadInstr), .WBloadInstr(WBloadInstr), .rs1SEL(F_Sel1), .rs2SEL(F_Sel2), .notStall(notStallRAL));
     
     rs1Mux forwardMux1(.Ex_rs1(exReg_ALUinpA), .Mem_rs1(memReg_aluRes), .Wb_rs1(wbReg_aluRes), .DOUT2(DOUT2), .rs1Sel(F_Sel1), .rs1(F_rs1));
     rs2Mux forwardMux2ALU(.Ex_rs2(exReg_ALUinpB), .Mem_rs2(memReg_aluRes), .Wb_rs2(wbReg_aluRes), .DOUT2(DOUT2), .rs2Sel(F_Sel2ALU), .rs2(F_rs2ALU));
