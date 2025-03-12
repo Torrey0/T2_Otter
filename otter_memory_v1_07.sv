@@ -1,14 +1,15 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Company:
-// Engineer: J. Callenes, P. Hummel
+// Engineer: J. Callenes, P. Hummel, Torrey Zaches
 //
 // Create Date: 01/27/2019 08:37:11 AM
 // Module Name: OTTER_mem
 // Project Name: Memory for OTTER RV32I RISC-V
 // Tool Versions: Xilinx Vivado 2019.2
-// Description: 64k Memory, dual access read single access write. Designed to
-//              purposely utilize BRAM which requires synchronous reads and write
+// Description: 64k Memory, with direct mapped instruction cache and 4-way
+//              set associative data cache. Designed to purposely
+//              utilize BRAM which requires synchronous reads and write
 //              ADDR1 used for Program Memory Instruction. Word addressable so it
 //              must be adapted from byte addresses in connection from PC
 //              ADDR2 used for data access, both internal and external memory
@@ -42,6 +43,7 @@
 // Revision 1.05 - changed MEM_WD to MEM_DIN2, changed default to save nothing
 // Revision 1.06 - removed typo in instantiation template
 // Revision 1.07 - remove unused wordAddr1 signal
+// Revision 1.08 - embedded direct mapped and set associative cache, replacing dual port read/write with "one block at a time" reads and writes
 //
 //////////////////////////////////////////////////////////////////////////////////
                                                                                                                              
@@ -53,7 +55,6 @@
     input MEM_RST,
     
     input [13:0] MEM_ADDR1, // Instruction Memory word Addr (Connect to PC[15:2])
-//    input logic [31:0] a,   //from imem module, for cache use
     input branchTaken,      //when we take a branch, we need to reset stage of instruction cache, whatever it was loading before is irrelevant
     input [31:0] MEM_ADDR2, // Data Memory Addr
     input [31:0] MEM_ADDR2Parse,
@@ -77,10 +78,7 @@
     assign IOADDRParse= (MEM_ADDR2Parse >= 32'h00010000);
     logic cacheRead2;
     assign cacheRead2= (~IOADDR) & MEM_RDEN2;
-    
-    
-    
-    //logic [13:0] wordAddr2Parse;
+      
     logic [13:0] wordAddr2;
     logic [31:0] memReadWord, ioBuffer, memReadSized;
     logic [1:0] byteOffsetParse;
@@ -94,132 +92,86 @@
 //        $readmemh("matMult10b10.mem", memory, 0, 16383);
         $readmemh("Test_All.mem", memory, 0, 16383);
     end
-
     
     assign wordAddr2 = MEM_ADDR2[15:2];
     assign byteOffset = MEM_ADDR2[1:0];     // byte offset of memory address
-    //assign wordAddr2Parse = MEM_ADDR2Parse[15:2];
     assign byteOffsetParse = MEM_ADDR2Parse[1:0];
-    // NOT USED IN OTTER
-    //Check for misalligned or out of bounds memory accesses
-    //assign ERR = ((MEM_ADDR1 >= 2**ACTUAL_WIDTH)|| (MEM_ADDR2 >= 2**ACTUAL_WIDTH)
-    //                || MEM_ADDR1[1:0] != 2'b0 || MEM_ADDR2[1:0] !=2'b0)? 1 : 0;
-            
+    
     // buffer the IO input for reading
     always_ff @(posedge MEM_CLK) begin
       if(MEM_RDEN2)
         ioBuffer <= IO_IN;
     end
     //
- //all Cache stuff is here!!
-    logic cache_hit, cache_miss, loadMem;
-    logic [31:0] w0;
-    //logic [31:0] w1;
-
-    //continuing in future, make sure this is consistant with cache when modifying it
-    //use offset= log2(blockSize), in this case blockSize=8, so offset=3 bits here
-    logic [3:0] loadMemState;
-    logic [3:0] loadCacheState;
     
-    logic [13:0] MEM_ADDR1Offset8_1;
-//    logic [13:0] MEM_ADDR1Offset8_2;
-    assign MEM_ADDR1Offset8_1[13:3]= MEM_ADDR1[13:3];   //assign reading address given block of memory
-//    assign MEM_ADDR1Offset8_2[13:3]= MEM_ADDR1[13:3];
-    /* the below assign statement create the following logic, all other situations are dont cares
-    in= 0b001 => out=0b000
-in=0b010 => out=0b010
-in=0b011 => out=0b100
-in=0b100 => out=0b110*/
-    assign MEM_ADDR1Offset8_1[2:0] = loadMemState-1;
+//Direct Mapped Instruction Cache- 16 blocks, 8 words per block
+    logic instr_cache_hit, instr_cache_miss, instr_cache_loadMem;
+    logic [31:0] instr_cache_w0;
 
-//    assign MEM_ADDR1Offset8_1[2:0] = { loadMemState[2] | (loadMemState[1] & loadMemState[0]),  (~loadMemState[0]), 1'b0 };
-//    assign MEM_ADDR1Offset8_2[2:0]={MEM_ADDR1Offset8_1[2:1], 1'b1};
-
-//    //below code has been moved down to support BRAM since only one at a time should be happening
-//    always_ff @(posedge MEM_CLK) begin
-//        if(loadMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
-//            w0 <=memory[MEM_ADDR1Offset8_1];
-//            w1 <=memory[MEM_ADDR1Offset8_2];
-//        end
-//    end
+    logic [3:0] instr_loadMemState;   //tracks which word in a given block is currently being loaded to memory from cache
+    logic [3:0] instr_loadCacheState; //propogation of above value
+    
+    logic [13:0] MEM_ADDR1_OFFSET;
+    assign MEM_ADDR1_OFFSET[13:3]= MEM_ADDR1[13:3];   //assign reading address given block of memory
+    assign MEM_ADDR1_OFFSET[2:0] = instr_loadMemState-1;
 
     logic [31:0] CacheDOUT1;
-    Cache Cache(.PC(MEM_ADDR1), .CLK(MEM_CLK), .w0(w0), .rd(CacheDOUT1), .hit(cache_hit), .loadCacheState(loadCacheState), .miss(cache_miss));
-    CacheFSM CacheFSM(.hit(cache_hit), .miss(cache_miss), .CLK(MEM_CLK), .RST(MEM_RST), .branchTaken(branchTaken), .loadMem(loadMem), .loadMemState(loadMemState), .loadCacheState(loadCacheState), .pc_stall(cacheMissStall));
-    //end of instruction cache section
-    //start of data cacheSection
-       logic dataloadMem;
-    logic [31:0] dataw0;
-    //logic [31:0] dataw1;
+    Cache Cache(.PC(MEM_ADDR1), .CLK(MEM_CLK), .w0(instr_cache_w0), .rd(CacheDOUT1), .hit(instr_cache_hit), .loadCacheState(instr_loadCacheState), .miss(instr_cache_miss));
+    CacheFSM CacheFSM(.hit(instr_cache_hit), .miss(instr_cache_miss), .CLK(MEM_CLK), .RST(MEM_RST), .branchTaken(branchTaken), .loadMem(instr_cache_loadMem), .loadMemState(instr_loadMemState), .loadCacheState(instr_loadCacheState), .pc_stall(cacheMissStall));
+//
+    
+//Set Associative Data Cache- 64 word, 4-way, 4 words per block
+    logic [31:0] dataw0;    //data transfer from memory into cache
+    logic [31:0] memOut0;   //data transfer from cache into memory module
+    logic [31:0] CacheDOUT2;    //output of dataCache fed into pipeline
 
-    //continuing in future, make sure this is consistant with cache when modifying it
-    //use offset= log2(blockSize), in this case blockSize=8, so offset=3 bits here
+    //tracks state of data transfer
     logic [2:0] dataLoadMemState;
-    logic [2:0] dataLoadCacheState; //propgated of above
+    logic [2:0] dataLoadCacheState; //propogation of above value
     
     logic [2:0] dataStoreCacheState;
-    logic [2:0] dataStoreMemState;  //propgated of above
-    logic tryWrite;
-    //logic dirtyTarget;
-    logic [13:0] MEM_ADDR2Offset8_1;
-//    logic [13:0] MEM_ADDR2Offset8_2;
-    assign MEM_ADDR2Offset8_1[13:2]= wordAddr2[13:2];   //assign reading address given block of memory
-//    assign MEM_ADDR2Offset8_2[13:2]= wordAddr2[13:2];
-    /* the below assign statement create the following logic, all other situations are dont cares
-    in= 0b01 => out=0b00
-in=0b10 => out=0b10*/
-    assign MEM_ADDR2Offset8_1[1:0] = dataLoadMemState-1;
-//    assign MEM_ADDR2Offset8_2[1:0]={MEM_ADDR2Offset8_1[1:1], 1'b1};
-
-    //moving these below to make it an if else, either storing or loading
-//    always_ff @(posedge MEM_CLK) begin
-//        if(dataloadMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
-//            dataw0 <= memory[MEM_ADDR2Offset8_1];
-//            dataw1 <=memory[MEM_ADDR2Offset8_2];
-//        end 
-//    end
-    logic dataStoreMem;
-    logic [31:0] memOut0;//, memOut1;
+    logic [2:0] dataStoreMemState;  //propogation of above value
+    //
+    
+    //parse which word within block to load
+    logic [13:0] MEM_ADDR2Offset8_1;    
+    assign MEM_ADDR2Offset8_1[13:2]= wordAddr2[13:2];   //assign reading address to given block of memory
+    assign MEM_ADDR2Offset8_1[1:0] = dataLoadMemState-1;    //assign specific word within that memory
+    
+    //parse which word within block to store
     logic [13:0] storeMEM_ADDR2Offset8_1;
-//    logic [13:0] storeMEM_ADDR2Offset8_2;
     assign storeMEM_ADDR2Offset8_1[13:2]= wordAddr2[13:2];   //assign reading address given block of memory
-//    assign storeMEM_ADDR2Offset8_2[13:2]= wordAddr2[13:2];
-//    assign storeMEM_ADDR2Offset8_1[1:0] = { (dataStoreMemState[1]), 1'b0 };
     assign storeMEM_ADDR2Offset8_1[1:0] = dataStoreMemState[1]-1;
 
-//    assign storeMEM_ADDR2Offset8_2[1:0]={MEM_ADDR2Offset8_1[1:1], 1'b1};
-    
-    //we fr need to re-structure to read effectively one at a time...
-    always_ff @(posedge MEM_CLK) begin
-        if(dataLoadMemState!=0) begin   //Instruction cache is requesting a load, load 8 bytes from memory
-            dataw0 <= memory[MEM_ADDR2Offset8_1];
-//            dataw1 <=memory[MEM_ADDR2Offset8_2];
-        end  if(dataStoreMemState!=0) begin   //Instruction cache is requesting a load, load 8 bytes from memory
-            memory[storeMEM_ADDR2Offset8_1]<=memOut0;
-//            memory[storeMEM_ADDR2Offset8_2]<=memOut1;
-        end   if(loadMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
-            w0 <=memory[MEM_ADDR1Offset8_1];
-//            w1 <=memory[MEM_ADDR1Offset8_2];
-        end
-    end
-
-
-
-    logic [31:0] CacheDOUT2;
+    //logic shared between dataCache and cacheFSM
+    logic tryWrite;
     logic tryRead;
     logic dirtyTarget;
     logic overwrite;
-    //logic blockFull;
     dataCache dataCache(.overwrite(overwrite), .dirtyTarget(dirtyTarget), .MEM_SIZE(MEM_SIZE), .byteOffset(byteOffset), .Addr(wordAddr2), .CLK(MEM_CLK), .w0(dataw0), .dataOut(CacheDOUT2), .loadMemState(dataLoadCacheState), .storeMemState(dataStoreCacheState), .tryWrite(tryWrite), .tryRead(tryRead), .storeInput(MEM_DIN2), .memOut0(memOut0));
     dataCacheFSM dataCacheFSM(.overwrite(overwrite), .dirtyTarget(dirtyTarget), .readEnable(cacheRead2), .writeEnable(weAddrValid), .CLK(MEM_CLK), .RST(MEM_RST), .loadMemState(dataLoadMemState), .loadCacheState(dataLoadCacheState), .storeMemState(dataStoreMemState) , .storeCacheState(dataStoreCacheState), .tryWrite(tryWrite), .tryRead(tryRead), .pc_stall(dataMemStall));
+//
     
-    // BRAM requires all reads and writes to occur synchronously
+//single port BRAM access. BRAM requires all reads/writes to be synchronous
     always_ff @(posedge MEM_CLK) begin
-      // read all data synchronously required for BRAM
-      if (MEM_RDEN1)                       // need EN for extra load cycle to not change instruction
-        MEM_DOUT1 <=CacheDOUT1;
-      if (cacheRead2)                       // Read word from memory
-        memReadWord <= CacheDOUT2;  //hmm
+    
+        if(dataLoadMemState!=0) begin   //Data cache is requesting a load, load 4 words from memory to cache
+            dataw0 <= memory[MEM_ADDR2Offset8_1];
+            
+        end  if(dataStoreMemState!=0) begin   //Data cache is requesting a store, store 4 words from cache to memory
+            memory[storeMEM_ADDR2Offset8_1]<=memOut0;
+            
+        end   if(instr_cache_loadMem) begin             //Instruction cache is requesting a load, load 8 words from memory to cache
+            instr_cache_w0 <=memory[MEM_ADDR1_OFFSET];
+        end
+    end
+    
+    //output from the caches module
+    always_ff @(posedge MEM_CLK) begin
+      if (MEM_RDEN1)                       
+        MEM_DOUT1 <=CacheDOUT1;     //output of instruction cache, is directly used as the output from memory module
+      if (cacheRead2)                      
+        memReadWord <= CacheDOUT2;  //output of data cache is parsed below based on lw, lh, lb, etc, before being outputed.
     end
        
     // Change the data word into sized bytes and sign extend
@@ -249,8 +201,7 @@ in=0b10 => out=0b10*/
       endcase
     end
     
-     // Memory Mapped IO
-     
+     // Memory Mapped IO     
     always_comb begin
         //combinatoinal logic to trigger accessing of MMIO
         //used when writing

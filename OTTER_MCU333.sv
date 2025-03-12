@@ -165,11 +165,8 @@ module OTTER_MCU333(
             exReg_regWrite <= regWrite; //other control decoder outputs
             exReg_memWrite <= memWrite;
             exReg_memRead2 <= memRead2;
-        end
-        
-
-    end
-    
+        end        
+    end    
    
     //Instruction Execute
     logic [31:0] aluRes;
@@ -208,8 +205,7 @@ module OTTER_MCU333(
                 memReg_wa <= exReg_wa;
             end
     end
-    
-    
+        
     //Instruction Memory:
     //note: memory only supports writing to MMIO at the moment, since it is not necessary to read MMIO to test test_all, and doing so would require modyfing the wrapper, which we probably wont want to do until final lab if possible.
     //not currently assigning or using memBusy1 or memBusy2 (which are present on the 233 diagram, and may need to be used to induce a stall, or when a stall is necessary when writing or reading MMIO
@@ -217,35 +213,20 @@ module OTTER_MCU333(
     assign CPU_IOBUS_OUT = F_rs2Mem;    //output of CPU is the input to memory cuz we treating cpu external like another memory
     
     logic [31:0] DOUT2; //output data of memory
-//    logic [31:0] MainMemDOUT1;  //IR output of the main memory
-    //cache logic
-//    logic [31:0] w0;
-//    logic [31:0] w1;
-//    logic [31:0] w2;
-//    logic [31:0] w3;
-//    logic [31:0] w4;
-//    logic [31:0] w5;
-//    logic [31:0] w6;
-//    logic [31:0] w7;
 
     //the wbRegisters are used by the memory for parsing DOUT2. For example, the output of memory will need to be adjusted depending on signed/unsigned, lw, lh, lb.
     logic [2:0] wbReg_fun3; 
     logic [31:0] wbReg_aluRes;
     //computing DOUT1 and DOUT2 is always_ff, so needs to be directly mapped into wbReg,and co.
-    Memory mem(.MEM_CLK(CPU_CLK), .MEM_RDEN1(notStall), .MEM_RDEN2(memReg_memRead2), .MEM_WE2(memReg_memWrite), .MEM_ADDR1(PC[15:2]), .MEM_ADDR2(memReg_aluRes), .MEM_ADDR2Parse(wbReg_aluRes), .MEM_DIN2(F_rs2Mem), 
-                                  .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGNParse(wbReg_fun3[2:2]), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), .MEM_DOUT1(DOUT1),
-//                                  .w0(w0), .w1(w1), .w2(w2), .w3(w3), .w4(w4), .w5(w5), .w6(w6), .w7(w7),
-                                   .MEM_DOUT2(DOUT2)
-                                   , .cacheMissStall(cacheMissStall), .dataMemStall(dataMemStall), .branchTaken(branchTaken), .MEM_RST(CPU_RST));
-
-
-
-
+    Memory mem(.MEM_CLK(CPU_CLK), .MEM_RDEN1(notStall), .MEM_RDEN2(memReg_memRead2), .MEM_WE2(memReg_memWrite), .IO_IN(CPU_IOBUS_IN), .IO_WR(CPU_IOBUS_WR), //flags inducing memory actions
+                .MEM_ADDR1(PC[15:2]), .MEM_ADDR2(memReg_aluRes), .MEM_DIN2(F_rs2Mem),   .MEM_DOUT1(DOUT1), .MEM_DOUT2(DOUT2),                   //key inputs (and addresses) and outputs
+                .MEM_SIZE(memReg_fun3[1:0]), .MEM_SIZEParse(wbReg_fun3[1:0]), .MEM_SIGNParse(wbReg_fun3[2:2]),.MEM_ADDR2Parse(wbReg_aluRes),    //parsing information
+                .cacheMissStall(cacheMissStall), .dataMemStall(dataMemStall), .branchTaken(branchTaken), .MEM_RST(CPU_RST)                      //cache related control flow input/outputs
+    );     
 
     //other wb registers
     logic [31:0] wbReg_PC; 
     logic [1:0] wbReg_rf_wr_sel;
-
     
     //wbReg_regWrite, and wbReg_wa declared in decode since they both enter regFile
     always_ff@(posedge CPU_CLK) begin
@@ -263,7 +244,7 @@ module OTTER_MCU333(
     //local
     logic [31:0] wbPCPlusFour;
     
-    assign wbPCPlusFour = wbReg_PC + 4;                             //removed, DOUT2 alr on an ff
+    assign wbPCPlusFour = wbReg_PC + 4;                            
     reg_mux REGMUX(.rf_wr_sel(wbReg_rf_wr_sel), .PC_Plus_Four(wbPCPlusFour), .DOUT2(DOUT2), .alu_res(wbReg_aluRes), .wd(wd));
     //regFile declared in decode state above
     
@@ -291,13 +272,14 @@ module OTTER_MCU333(
             aluResWbDelayed <= wbReg_aluRes;    //we need to buffer the aluRes by 1 for forwarding 2 instr above to memory. This value has already been written back 1 cycle before now, but we didnt pull its value from regFile 2 cycles ago when we accessed rs2
         end
     end
-
+    
+    //forwarding Unit, and forwarding related muxes
     dataForwardingUnit forwarder(.Wb_rdAddr(wbReg_wa), .Mem_rdAddr(memReg_wa), .Ex_rs1Addr(exReg_rs1Addr), .Ex_rs2Addr(exReg_rs2Addr), .Wb_regWrite(wbReg_regWrite), .Mem_regWrite(memReg_regWrite), .Ex_rs1_used(exReg_rs1_used), .Ex_rs2_used(exReg_rs2_used), 
                                  .rs1Selected(exReg_rs1Selected), .MEMloadInstr(MEMloadInstr), .WBloadInstr(WBloadInstr), .rs1SEL(F_Sel1), .rs2SEL(F_Sel2), .notStall(notStallRAL));
     
     rs1Mux forwardMux1(.Ex_rs1(exReg_ALUinpA), .Mem_rs1(memReg_aluRes), .Wb_rs1(wbReg_aluRes), .DOUT2(DOUT2), .rs1Sel(F_Sel1), .rs1(F_rs1));
     rs2Mux forwardMux2ALU(.Ex_rs2(exReg_ALUinpB), .Mem_rs2(memReg_aluRes), .Wb_rs2(wbReg_aluRes), .DOUT2(DOUT2), .rs2Sel(F_Sel2ALU), .rs2(F_rs2ALU));
-    
+ 
     rs2MemMux forwardMux2Mem(.Mem_rs2(memReg_rs2), .Wb_aluResDelayed(aluResWbDelayed), .Wb_aluRes(wbReg_aluRes), .DOUT2(DOUT2), .rs2Sel(F_Sel2Delayed), .rs2(F_rs2Mem));
 
 endmodule
