@@ -70,12 +70,13 @@
     output logic [31:0] MEM_DOUT2, // Data
     output logic dataMemStall         //memory module's notStall, triggered on miss reading from data Memory
     );
+
     logic IOADDR;   //indicates if we are reading/writing to IO
     logic IOADDRParse;
     assign IOADDR=(MEM_ADDR2 >= 32'h00010000);
     assign IOADDRParse= (MEM_ADDR2Parse >= 32'h00010000);
     logic cacheRead2;
-    assign cachRead2= (~IOADDR) & MEM_RDEN2;
+    assign cacheRead2= (~IOADDR) & MEM_RDEN2;
     
     
     
@@ -147,7 +148,7 @@ in=0b100 => out=0b110*/
     CacheFSM CacheFSM(.hit(cache_hit), .miss(cache_miss), .CLK(MEM_CLK), .RST(MEM_RST), .branchTaken(branchTaken), .loadMem(loadMem), .loadMemState(loadMemState), .loadCacheState(loadCacheState), .pc_stall(cacheMissStall));
     //end of instruction cache section
     //start of data cacheSection
-       logic datacache_hit, datacache_miss, dataloadMem;
+       logic dataloadMem;
     logic [31:0] dataw0;
     //logic [31:0] dataw1;
 
@@ -159,7 +160,7 @@ in=0b100 => out=0b110*/
     logic [2:0] dataStoreCacheState;
     logic [2:0] dataStoreMemState;  //propgated of above
     logic tryWrite;
-    logic dirtyTarget;
+    //logic dirtyTarget;
     logic [13:0] MEM_ADDR2Offset8_1;
 //    logic [13:0] MEM_ADDR2Offset8_2;
     assign MEM_ADDR2Offset8_1[13:2]= wordAddr2[13:2];   //assign reading address given block of memory
@@ -190,10 +191,10 @@ in=0b10 => out=0b10*/
     
     //we fr need to re-structure to read effectively one at a time...
     always_ff @(posedge MEM_CLK) begin
-        if(dataloadMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
+        if(dataLoadMemState!=0) begin   //Instruction cache is requesting a load, load 8 bytes from memory
             dataw0 <= memory[MEM_ADDR2Offset8_1];
 //            dataw1 <=memory[MEM_ADDR2Offset8_2];
-        end  if(dataStoreMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
+        end  if(dataStoreMemState!=0) begin   //Instruction cache is requesting a load, load 8 bytes from memory
             memory[storeMEM_ADDR2Offset8_1]<=memOut0;
 //            memory[storeMEM_ADDR2Offset8_2]<=memOut1;
         end   if(loadMem) begin   //Instruction cache is requesting a load, load 8 bytes from memory
@@ -205,16 +206,19 @@ in=0b10 => out=0b10*/
 
 
     logic [31:0] CacheDOUT2;
-    logic blockFull;
-    dataCache dataCache(.storeFirst(storeFirst), .MEM_SIZE(MEM_SIZE), .byteOffset(byteOffset), .Addr(wordAddr2), .readEnable(cachRead2), .CLK(MEM_CLK), .w0(dataw0), .dataOut(CacheDOUT2), .readHit(readHit), .loadMemState(dataLoadCacheState), .storeMemState(dataStoreCacheState), .tryWrite(tryWrite), .storeInput(MEM_DIN2), .memOut0(memOut0));
-    dataCacheFSM dataCacheFSM(.storeFirst(storeFirst), .storeMem(dataStoreMem), .readEnable(cachRead2), .writeEnable(weAddrValid), .readHit(readHit), .CLK(MEM_CLK), .RST(MEM_RST), .loadMem(dataloadMem), .loadMemState(dataLoadMemState), .loadCacheState(dataLoadCacheState), .storeMemState(dataStoreMemState) , .storeCacheState(dataStoreCacheState), .tryWrite(tryWrite), .pc_stall(dataMemStall));
+    logic tryRead;
+    logic dirtyTarget;
+    logic overwrite;
+    //logic blockFull;
+    dataCache dataCache(.overwrite(overwrite), .dirtyTarget(dirtyTarget), .MEM_SIZE(MEM_SIZE), .byteOffset(byteOffset), .Addr(wordAddr2), .CLK(MEM_CLK), .w0(dataw0), .dataOut(CacheDOUT2), .loadMemState(dataLoadCacheState), .storeMemState(dataStoreCacheState), .tryWrite(tryWrite), .tryRead(tryRead), .storeInput(MEM_DIN2), .memOut0(memOut0));
+    dataCacheFSM dataCacheFSM(.overwrite(overwrite), .dirtyTarget(dirtyTarget), .readEnable(cacheRead2), .writeEnable(weAddrValid), .CLK(MEM_CLK), .RST(MEM_RST), .loadMemState(dataLoadMemState), .loadCacheState(dataLoadCacheState), .storeMemState(dataStoreMemState) , .storeCacheState(dataStoreCacheState), .tryWrite(tryWrite), .tryRead(tryRead), .pc_stall(dataMemStall));
     
     // BRAM requires all reads and writes to occur synchronously
     always_ff @(posedge MEM_CLK) begin
       // read all data synchronously required for BRAM
       if (MEM_RDEN1)                       // need EN for extra load cycle to not change instruction
         MEM_DOUT1 <=CacheDOUT1;
-      if (cachRead2)                       // Read word from memory
+      if (cacheRead2)                       // Read word from memory
         memReadWord <= CacheDOUT2;  //hmm
     end
        

@@ -249,12 +249,14 @@ module OTTER_MCU333(
     
     //wbReg_regWrite, and wbReg_wa declared in decode since they both enter regFile
     always_ff@(posedge CPU_CLK) begin
-        wbReg_PC <= memReg_PC;
-        wbReg_regWrite <= memReg_regWrite;
-        wbReg_rf_wr_sel <= memReg_rf_wr_sel;
-        wbReg_wa <= memReg_wa;
-        wbReg_aluRes <=memReg_aluRes;
-        wbReg_fun3 <= memReg_fun3;
+        if(~dataMemStall) begin
+            wbReg_PC <= memReg_PC;
+            wbReg_regWrite <= memReg_regWrite;
+            wbReg_rf_wr_sel <= memReg_rf_wr_sel;
+            wbReg_wa <= memReg_wa;
+            wbReg_aluRes <=memReg_aluRes;
+            wbReg_fun3 <= memReg_fun3;
+        end
     end
     
     //instruction WB:
@@ -284,8 +286,10 @@ module OTTER_MCU333(
         end
     end
     always_ff@(posedge CPU_CLK) begin
-        F_Sel2Delayed <= F_Sel2;
-        aluResWbDelayed <= wbReg_aluRes;    //we need to buffer the aluRes by 1 for forwarding 2 instr above to memory. This value has already been written back 1 cycle before now, but we didnt pull its value from regFile 2 cycles ago when we accessed rs2
+        if((~dataMemStall)) begin
+            F_Sel2Delayed <= F_Sel2;
+            aluResWbDelayed <= wbReg_aluRes;    //we need to buffer the aluRes by 1 for forwarding 2 instr above to memory. This value has already been written back 1 cycle before now, but we didnt pull its value from regFile 2 cycles ago when we accessed rs2
+        end
     end
 
     dataForwardingUnit forwarder(.Wb_rdAddr(wbReg_wa), .Mem_rdAddr(memReg_wa), .Ex_rs1Addr(exReg_rs1Addr), .Ex_rs2Addr(exReg_rs2Addr), .Wb_regWrite(wbReg_regWrite), .Mem_regWrite(memReg_regWrite), .Ex_rs1_used(exReg_rs1_used), .Ex_rs2_used(exReg_rs2_used), 
