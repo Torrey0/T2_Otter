@@ -89,8 +89,10 @@
     (* ram_decomp = "power" *) logic [31:0] memory [0:16383];
     
     initial begin
-//        $readmemh("matMult10b10.mem", memory, 0, 16383);
-        $readmemh("Test_All.mem", memory, 0, 16383);
+//        $readmemh("matMult3b3.mem", memory, 0, 16383);
+//        $readmemh("Test_All.mem", memory, 0, 16383);
+        $readmemh("testCacheStoreAndLoad.mem", memory, 0, 16383);
+
     end
     
     assign wordAddr2 = MEM_ADDR2[15:2];
@@ -139,16 +141,18 @@
     assign MEM_ADDR2Offset8_1[1:0] = dataLoadMemState-1;    //assign specific word within that memory
     
     //parse which word within block to store
+    
     logic [13:0] storeMEM_ADDR2Offset8_1;
-    assign storeMEM_ADDR2Offset8_1[13:2]= wordAddr2[13:2];   //assign reading address given block of memory
-    assign storeMEM_ADDR2Offset8_1[1:0] = dataStoreMemState[1]-1;
+    logic [11:0] storeMemTag;
+    assign storeMEM_ADDR2Offset8_1[13:2]= storeMemTag;   //assign reading address given block of memory
+    assign storeMEM_ADDR2Offset8_1[1:0] = dataStoreMemState-1;
 
     //logic shared between dataCache and cacheFSM
     logic tryWrite;
     logic tryRead;
     logic dirtyTarget;
     logic overwrite;
-    dataCache dataCache(.overwrite(overwrite), .dirtyTarget(dirtyTarget), .MEM_SIZE(MEM_SIZE), .byteOffset(byteOffset), .Addr(wordAddr2), .CLK(MEM_CLK), .w0(dataw0), .dataOut(CacheDOUT2), .loadMemState(dataLoadCacheState), .storeMemState(dataStoreCacheState), .tryWrite(tryWrite), .tryRead(tryRead), .storeInput(MEM_DIN2), .memOut0(memOut0));
+    dataCache dataCache(.storeMemTag(storeMemTag),.overwrite(overwrite), .dirtyTarget(dirtyTarget), .MEM_SIZE(MEM_SIZE), .byteOffset(byteOffset), .Addr(wordAddr2), .CLK(MEM_CLK), .w0(dataw0), .dataOut(CacheDOUT2), .loadMemState(dataLoadCacheState), .storeMemState(dataStoreCacheState), .tryWrite(tryWrite), .tryRead(tryRead), .storeInput(MEM_DIN2), .memOut0(memOut0));
     dataCacheFSM dataCacheFSM(.overwrite(overwrite), .dirtyTarget(dirtyTarget), .readEnable(cacheRead2), .writeEnable(weAddrValid), .CLK(MEM_CLK), .RST(MEM_RST), .loadMemState(dataLoadMemState), .loadCacheState(dataLoadCacheState), .storeMemState(dataStoreMemState) , .storeCacheState(dataStoreCacheState), .tryWrite(tryWrite), .tryRead(tryRead), .pc_stall(dataMemStall));
 //
     
@@ -157,7 +161,7 @@
     
         if(dataLoadMemState!=0) begin   //Data cache is requesting a load, load 4 words from memory to cache
             dataw0 <= memory[MEM_ADDR2Offset8_1];
-            
+            //should be dataStoreMemState below.? switching back from cache
         end  if(dataStoreMemState!=0) begin   //Data cache is requesting a store, store 4 words from cache to memory
             memory[storeMEM_ADDR2Offset8_1]<=memOut0;
             

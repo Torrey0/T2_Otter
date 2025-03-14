@@ -46,6 +46,7 @@ module OTTER_Wrapper(
     //logic DB_BTN; //used for interrupts
     //debounce_one_shot btnDB (.CLK(CLK), .BTN(BTNL), .DB_BTN(DB_BTN)); //used for interrupts
    // Declare OTTER_CPU ////////////////////////////////////////////////////
+                                        //replace cl
    OTTER_MCU333 CPU (.CPU_RST(s_reset), .CPU_CLK(clk_50),    //removed .CPU_INTR(DB_BTN),  since not currently supporting interrupts
                   .CPU_IOBUS_OUT(IOBUS_out), .CPU_IOBUS_IN(IOBUS_in),
                   .CPU_IOBUS_ADDR(IOBUS_addr), .CPU_IOBUS_WR(IOBUS_wr));

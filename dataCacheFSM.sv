@@ -131,7 +131,7 @@ module dataCacheFSM(
             
             ST_WRITE_MEM: begin                
                 incrementStoreState=1'b1;
-                if(storeMemState==3'b100) begin                  
+                if(storeCacheState==3'b011) begin       //changed from 100               
                     NS = ST_FINISH_WRITE_MEM;
                 end
                 else begin

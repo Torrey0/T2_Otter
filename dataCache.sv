@@ -19,6 +19,17 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
+    parameter NUM_SETS = 4;
+    parameter NUM_BLOCKS_PER_SET = 4;   //Number of blocks / Num_sets
+    parameter BLOCK_SIZE =4;    //4 words per block
+    parameter INDEX_SIZE = 2;   // =log2(NUM_SETS)
+    parameter SET_SIZE = 2;     // =log2(NUM_BLOCKS_PER_SET)
+    parameter BLOCK_OFFSET_SIZE = 2;    // =log2(blockSize)
+    
+    parameter BYTE_OFFSET = 0;  //byte offset already removed from input address, and is accounted for in MEM_SIZE and Byte offset, and ha
+    parameter INSTRUCTION_SIZE = 14;    //our memory only holds locations up to 2^14 (it is 16kb)
+    parameter TAG_SIZE = INSTRUCTION_SIZE - BLOCK_OFFSET_SIZE - SET_SIZE - BYTE_OFFSET;    //currently: 14-2-2-0 = 8. So want Addr[13:4] stored in here
+
 
 module dataCache(
     input CLK,
@@ -39,19 +50,10 @@ module dataCache(
     output logic [31:0] dataOut,    //value read from cache, output to instruction    
     output logic [31:0] memOut0,    //for transfering data from cache to memory
     output logic overwrite, //indicate to FSM if we need to overwrite a block
-    output logic dirtyTarget    //indicate if the block we need to overwrite is dirty
+    output logic dirtyTarget,    //indicate if the block we need to overwrite is dirty
+    output logic [TAG_SIZE+INDEX_SIZE-1:0] storeMemTag    //tag of where we are storing to in Mem :)
     );
 
-    parameter NUM_SETS = 4;
-    parameter NUM_BLOCKS_PER_SET = 4;   //Number of blocks / Num_sets
-    parameter BLOCK_SIZE =4;    //4 words per block
-    parameter INDEX_SIZE = 2;   // =log2(NUM_SETS)
-    parameter SET_SIZE = 2;     // =log2(NUM_BLOCKS_PER_SET)
-    parameter BLOCK_OFFSET_SIZE = 2;    // =log2(blockSize)
-    
-    parameter BYTE_OFFSET = 0;  //byte offset already removed from input address, and is accounted for in MEM_SIZE and Byte offset, and ha
-    parameter INSTRUCTION_SIZE = 14;    //our memory only holds locations up to 2^14 (it is 16kb)
-    parameter TAG_SIZE = INSTRUCTION_SIZE - BLOCK_OFFSET_SIZE - SET_SIZE - BYTE_OFFSET;    //currently: 14-2-2-0 = 8. So want Addr[13:4] stored in here
     
     //the space for the actual cache
        //space                //each set     each block           //each word
@@ -229,13 +231,17 @@ end
             
    //handle storing to mem from cache
         if(storeMemState!=3'b000) begin  //handle storing from cache to MEM (when cache full)
-            memOut0 <= data[index][targetBlockIndex][0];
+            memOut0 <= data[index][targetBlockIndex][storeMemState-1];
+            storeMemTag<={tags[index][targetBlockIndex],index};
             if(storeMemState==3'b100) begin     //at end of storing sequence, update information about the block
                 valid_bits[index][targetBlockIndex] <= 1'b1;    
                 dirty_bits[index][targetBlockIndex] <= 1'b0;    //writing to memory, this location is no longer dirty!
             end
         end
     end
+//    always_comb begin   //just constantly give mem output, not necessarily always used
+//        memOut0=data[index][targetBlockIndex][storeMemState-1];
+//    end
 
     
 endmodule
